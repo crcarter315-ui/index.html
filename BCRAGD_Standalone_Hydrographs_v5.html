@@ -68,6 +68,15 @@
   #tooltip { position:absolute; display:none; pointer-events:none; z-index:2;
              background:#17354b; color:white; padding:8px 10px; border-radius:6px;
              font-size:11px; line-height:1.5; box-shadow:0 3px 12px #0002; white-space:nowrap; }
+  .chart-slider-wrap { margin:10px 5px 8px; padding:10px 12px 8px;
+                       background:#f6f9fa; border:1px solid #e2e9ed; border-radius:8px; }
+  .chart-slider-labels { display:flex; justify-content:space-between; align-items:center;
+                         gap:10px; flex-wrap:wrap; margin-bottom:7px; }
+  .chart-slider-labels label { margin:0; font-size:9px; letter-spacing:.45px; }
+  #sliderReadout { color:var(--navy); font-size:11px; font-weight:700; }
+  #chartSlider { display:block; width:100%; height:28px; margin:0; cursor:pointer;
+                 accent-color:var(--blue); touch-action:pan-y; }
+  #chartSlider:disabled { opacity:.45; cursor:default; }
   .chart-footer { display:flex; justify-content:space-between; gap:10px; color:var(--muted);
                   font-size:11px; padding:2px 5px 4px; flex-wrap:wrap; }
   .info-panel { margin-top:15px; border:1px solid var(--line); border-radius:9px; padding:14px 15px; }
@@ -125,35 +134,9 @@
     <div id="loading" class="loading">Loading public stream gage information…</div>
 
     <section id="gageContent" hidden>
-      <div class="gage-name" id="gageName">—</div>
-      <div class="gage-meta" id="gageMeta">—</div>
-
-      <div class="metrics">
-        <div class="metric">
-          <div class="metric-label">Current water level</div>
-          <div class="metric-value" id="currentStage">—</div>
-          <div class="metric-sub" id="stageTime">Observation time unavailable</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Data status</div>
-          <div class="metric-value" id="dataStatus" style="font-size:19px">—</div>
-          <div class="metric-sub" id="lastUpdate">Last update unavailable</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Road condition</div>
-          <div class="metric-value road-value" style="font-size:19px"><span class="road-dot" id="roadStatusDot" aria-hidden="true"></span><span id="roadStatus">—</span></div>
-          <div class="metric-sub" id="roadThreshold">Threshold not provided</div>
-        </div>
-      </div>
-
-      <div class="status-row">
-        <span class="status-chip" id="qcChip">Quality status: —</span>
-        <span class="status-chip" id="providerChip">Provider: —</span>
-      </div>
-
       <div class="chart-card">
         <div class="chart-head">
-          <h2>Water Level Hydrograph</h2>
+          <h2 id="chartTitle">Stream Gage</h2>
           <div class="chart-units" id="chartUnits">Stage (ft)</div>
         </div>
         <div class="range-stats" aria-label="Statistics for selected hydrograph period">
@@ -176,11 +159,44 @@
           </svg>
           <div id="tooltip"></div>
         </div>
+        <div class="chart-slider-wrap" id="chartSliderWrap">
+          <div class="chart-slider-labels">
+            <label for="chartSlider">DRAG TO INSPECT OBSERVATIONS</label>
+            <span id="sliderReadout">Select a point on the chart</span>
+          </div>
+          <input id="chartSlider" type="range" min="0" max="0" value="0" step="1" disabled aria-label="Select a hydrograph observation" />
+        </div>
         <div class="chart-footer">
           <span id="pointCount">0 observations</span>
           <span>Hover over the line to inspect observations</span>
         </div>
       </div>
+
+      <div class="gage-name" id="gageName">—</div>
+      <div class="gage-meta" id="gageMeta">—</div>
+
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Current water level</div>
+          <div class="metric-value" id="currentStage">—</div>
+          <div class="metric-sub" id="stageTime">Observation time unavailable</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Data status</div>
+          <div class="metric-value" id="dataStatus" style="font-size:19px">—</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Road condition</div>
+          <div class="metric-value road-value" style="font-size:19px"><span class="road-dot" id="roadStatusDot" aria-hidden="true"></span><span id="roadStatus">—</span></div>
+          <div class="metric-sub" id="roadThreshold">Threshold not provided</div>
+        </div>
+      </div>
+
+      <div class="status-row">
+        <span class="status-chip" id="qcChip">Quality status: —</span>
+        <span class="status-chip" id="providerChip">Provider: —</span>
+      </div>
+
 
       <div class="info-panel" id="qcPanel">
         <div class="info-title">Monitoring information</div>
@@ -319,13 +335,13 @@
 
   function updateGageDetails(g) {
     $("gageName").textContent = g.gage_name || "Unnamed stream gage";
+    $("chartTitle").textContent = g.gage_name || "Stream Gage";
     $("gageMeta").textContent = (g.provider || "Provider unavailable") + "  •  " + g.gage_id;
     const unit = g.stage_unit || "";
     $("currentStage").textContent = g.stage === null || g.stage === undefined ? "—" :
       fmtNumber(g.stage) + (unit ? " " + unit : "");
     $("stageTime").textContent = "Observation: " + fmtDate(g.obs_time);
     $("dataStatus").textContent = g.data_status || "Unavailable";
-    $("lastUpdate").textContent = "Last update: " + fmtDate(g.last_update);
     const roadStatusText = String(g.road_status || "Not established");
     $("roadStatus").textContent = roadStatusText;
     const roadStatusLower = roadStatusText.toLowerCase();
@@ -363,9 +379,16 @@
   function renderChart(rows) {
     observations = rows;
     const svg = $("chart");
+    const slider = $("chartSlider");
+    const sliderReadout = $("sliderReadout");
     const W=900, H=300, L=90, R=24, T=18, B=48;
     const pw=W-L-R, ph=H-T-B;
     if (!rows.length) {
+      slider.disabled = true;
+      slider.min = "0";
+      slider.max = "0";
+      slider.value = "0";
+      sliderReadout.textContent = "No observations to inspect";
       $("rangeMin").textContent = "—";
       $("rangeMax").textContent = "—";
       $("rangeValue").textContent = "—";
@@ -419,6 +442,45 @@
     const hoverLine=svg.querySelector("#hoverLine");
     const hoverDot=svg.querySelector("#hoverDot");
     const tooltip=$("tooltip");
+    function showObservation(idx) {
+      idx = Math.max(0, Math.min(rows.length - 1, Number(idx)));
+      const r = rows[idx];
+      const xx = x(Number(r.obs_time));
+      const yy = y(Number(r.stage));
+      hoverLine.setAttribute("x1",xx);
+      hoverLine.setAttribute("x2",xx);
+      hoverLine.setAttribute("visibility","visible");
+      hoverDot.setAttribute("cx",xx);
+      hoverDot.setAttribute("cy",yy);
+      hoverDot.setAttribute("visibility","visible");
+      const unit = r.stage_unit || selectedGage.stage_unit || "";
+      const stageText = fmtNumber(r.stage) + (unit ? " " + unit : "");
+      const dateText = fmtDate(r.obs_time);
+      tooltip.innerHTML = "<strong>" + stageText + "</strong><br>" + dateText;
+      tooltip.style.display = "block";
+      const wrapRect = $("chartWrap").getBoundingClientRect();
+      const svgRect = svg.getBoundingClientRect();
+      const scaleX = svgRect.width / W;
+      const scaleY = svgRect.height / H;
+      let left = (xx * scaleX) + (svgRect.left - wrapRect.left) + 12;
+      let top = (yy * scaleY) + (svgRect.top - wrapRect.top) - 48;
+      if (left > wrapRect.width - 180) left -= 190;
+      if (left < 4) left = 4;
+      if (top < 0) top = 8;
+      tooltip.style.left = left + "px";
+      tooltip.style.top = top + "px";
+      slider.value = String(idx);
+      sliderReadout.textContent = stageText + "  •  " + dateText;
+    }
+
+    slider.disabled = false;
+    slider.min = "0";
+    slider.max = String(rows.length - 1);
+    slider.step = "1";
+    slider.value = String(rows.length - 1);
+    showObservation(rows.length - 1);
+    slider.oninput = () => showObservation(slider.value);
+
     hit.addEventListener("pointermove", ev=>{
       const rect=svg.getBoundingClientRect();
       const svgX=(ev.clientX-rect.left)/rect.width*W;
@@ -426,22 +488,10 @@
       let lo=0, hi=rows.length-1;
       while(lo<hi){const mid=(lo+hi)>>1;if(Number(rows[mid].obs_time)<target)lo=mid+1;else hi=mid;}
       const idx = lo>0 && Math.abs(Number(rows[lo-1].obs_time)-target)<Math.abs(Number(rows[lo].obs_time)-target) ? lo-1 : lo;
-      const r=rows[idx], xx=x(Number(r.obs_time)), yy=y(Number(r.stage));
-      hoverLine.setAttribute("x1",xx); hoverLine.setAttribute("x2",xx); hoverLine.setAttribute("visibility","visible");
-      hoverDot.setAttribute("cx",xx); hoverDot.setAttribute("cy",yy); hoverDot.setAttribute("visibility","visible");
-      tooltip.innerHTML="<strong>"+fmtNumber(r.stage)+" "+(r.stage_unit||selectedGage.stage_unit||"")+"</strong><br>"+fmtDate(r.obs_time);
-      tooltip.style.display="block";
-      const wrapRect=$("chartWrap").getBoundingClientRect();
-      let left=ev.clientX-wrapRect.left+12;
-      let top=ev.clientY-wrapRect.top-48;
-      if(left>wrapRect.width-180) left-=190;
-      if(top<0) top=8;
-      tooltip.style.left=left+"px"; tooltip.style.top=top+"px";
+      showObservation(idx);
     });
     hit.addEventListener("pointerleave",()=>{
-      hoverLine.setAttribute("visibility","hidden");
-      hoverDot.setAttribute("visibility","hidden");
-      tooltip.style.display="none";
+      // Keep the selected observation visible; the slider remains usable on touch screens.
     });
   }
 
