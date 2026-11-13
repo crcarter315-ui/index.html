@@ -86,6 +86,18 @@
   #chartSlider:disabled { opacity:.45; cursor:default; }
   .chart-footer { display:flex; justify-content:space-between; gap:10px; color:var(--muted);
                   font-size:11px; padding:2px 5px 4px; flex-wrap:wrap; }
+  .rain-toggle-row { display:flex; justify-content:flex-end; margin:10px 0 0; }
+  .rain-card { margin-top:10px; border:1px solid var(--line); border-radius:10px; padding:16px 14px 10px; }
+  .rain-total { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:10px 0 6px; }
+  .rain-total-box { background:#f6f9fa; border:1px solid #e2e9ed; border-radius:7px; padding:8px 12px; min-width:150px; }
+  .rain-total-label { color:var(--muted); text-transform:uppercase; letter-spacing:.45px; font-size:9px; font-weight:700; }
+  .rain-total-value { color:var(--navy); font-size:20px; font-weight:700; margin-top:3px; }
+  .rain-gauge-name { color:var(--muted); font-size:11px; }
+  #rainChart { display:block; width:100%; height:230px; margin-top:8px; }
+  .rain-bar { fill:#4d9ac2; }
+  .rain-bar:hover { fill:#246f99; }
+  .rain-note { display:none; padding:8px 10px; margin:8px 0 4px; border-radius:6px; background:#fff4df; color:#79520f; font-size:11px; line-height:1.45; }
+  .rain-footer { display:flex; justify-content:space-between; gap:10px; color:var(--muted); font-size:11px; padding:2px 5px 4px; flex-wrap:wrap; }
   .info-panel { margin-top:15px; border:1px solid var(--line); border-radius:9px; padding:14px 15px; }
   .info-title { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:8px; }
   .info-text { color:#52636e; font-size:12px; line-height:1.55; }
@@ -184,6 +196,31 @@
         </div>
       </div>
 
+      <div class="rain-toggle-row">
+        <button id="rainToggle" type="button" aria-expanded="false">Show Rainfall</button>
+      </div>
+      <section class="rain-card" id="rainCard" hidden aria-label="Associated rainfall observations">
+        <div class="chart-head">
+          <h2>Rainfall Observations</h2>
+          <div class="chart-units">Rainfall (inches)</div>
+        </div>
+        <div class="rain-total">
+          <div class="rain-total-box">
+            <div class="rain-total-label">Total Rainfall</div>
+            <div class="rain-total-value" id="rainTotal">—</div>
+          </div>
+          <div class="rain-gauge-name" id="rainGaugeName">Associated rain gauge: —</div>
+        </div>
+        <div class="rain-note" id="rainNote"></div>
+        <svg id="rainChart" viewBox="0 0 900 230" role="img" aria-label="Rainfall observations as bars">
+          <text x="450" y="115" text-anchor="middle" class="axis-label">Select Show Rainfall to load observations.</text>
+        </svg>
+        <div class="rain-footer">
+          <span id="rainPointCount">0 observations</span>
+          <span>Bars show individual recorded rainfall observations</span>
+        </div>
+      </section>
+
       <div class="metrics">
         <div class="metric">
           <div class="metric-label">Current water level</div>
@@ -221,6 +258,10 @@
   const SERVICE = "https://services3.arcgis.com/wqgvFuY8FlZhOIIy/arcgis/rest/services/Stream_Gages_(Public)/FeatureServer";
   const GAGE_LAYER = SERVICE + "/0";
   const OBS_TABLE = SERVICE + "/2";
+  const RAIN_SERVICE = "https://services3.arcgis.com/wqgvFuY8FlZhOIIy/arcgis/rest/services/Rain_Gauges_(Public)/FeatureServer";
+  const RAIN_GAGE_LAYER = RAIN_SERVICE + "/0";
+  const RAIN_OBS_TABLE = RAIN_SERVICE + "/1";
+  const RAIN_HISTORY_DAYS = 8;
   const PAGE_SIZE = 1000;
   const REFRESH_MS = 5 * 60 * 1000;
 
@@ -231,6 +272,8 @@
   let observations = [];
   let refreshTimer = null;
   let requestInProgress = false;
+  let rainfallShown = false;
+  let rainfallRequestId = 0;
 
   function showMessage(text, isError=false) {
     const el = $("message");
@@ -282,7 +325,7 @@
   async function loadGages() {
     const rows = await queryFeatures(GAGE_LAYER, {
       where:"1=1",
-      outFields:"gage_id,provider,gage_name,stage,stage_unit,obs_time,last_update,data_status,qc_status,qc_flags,qc_message,qc_timestamp,qc_version,road_status,road_threshold,distance_to_road,road",
+      outFields:"*",
       returnGeometry:"false",
       orderByFields:"gage_name ASC"
     });
@@ -360,6 +403,124 @@
     });
     return rows.filter(r => r.obs_time !== null && r.stage !== null && Number.isFinite(Number(r.stage)))
       .sort((a,b) => Number(a.obs_time) - Number(b.obs_time));
+  }
+
+  async function loadRainGaugeName(stationId) {
+    if (stationId === null || stationId === undefined || stationId === "") return "";
+    const rows = await queryFeatures(RAIN_GAGE_LAYER, {
+      where:"station_id = " + Number(stationId),
+      outFields:"station_id,station_name",
+      returnGeometry:"false"
+    });
+    return rows.length ? String(rows[0].station_name || "") : "";
+  }
+
+  async function loadRainfallObservations(stationId, hours) {
+    const start = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const sqlDate = start.toISOString().slice(0,19).replace("T"," ");
+    const where = "station_id = " + Number(stationId) + " AND obs_time >= TIMESTAMP '" + sqlDate + "'";
+    const rows = await queryFeatures(RAIN_OBS_TABLE, {
+      where,
+      outFields:"OBJECTID,station_id,obs_time,rainfall",
+      returnGeometry:"false",
+      orderByFields:"obs_time ASC, OBJECTID ASC"
+    });
+    return rows.filter(r => {
+      const value = Number(r.rainfall);
+      return r.obs_time !== null && r.obs_time !== undefined && r.rainfall !== null && r.rainfall !== undefined && Number.isFinite(value) && value >= 0;
+    }).map(r => {
+      let value = Number(r.rainfall);
+      const unit = String(r.rain_unit || "inches").toLowerCase();
+      if (unit.includes("mm") || unit.includes("millimeter")) value = value / 25.4;
+      else if (unit.includes("cm") || unit.includes("centimeter")) value = value / 2.54;
+      return {...r, rainfall_inches:value};
+    }).sort((a,b) => Number(a.obs_time) - Number(b.obs_time));
+  }
+
+  function renderRainfallChart(rows, hours) {
+    const svg = $("rainChart");
+    const W=900, H=230, L=72, R=24, T=18, B=42;
+    const pw=W-L-R, ph=H-T-B;
+    const total = rows.reduce((sum,r) => sum + Number(r.rainfall_inches), 0);
+    $("rainTotal").textContent = rows.length ? total.toFixed(2) + " in" : "—";
+    $("rainPointCount").textContent = rows.length.toLocaleString() + " observations";
+    const note = $("rainNote");
+    if (hours > RAIN_HISTORY_DAYS * 24) {
+      note.textContent = "Rainfall history is currently retained for approximately " + RAIN_HISTORY_DAYS + " days. The 30-day chart and total therefore reflect only the observations still available in the table, not a complete 30-day record.";
+      note.style.display = "block";
+    } else {
+      note.textContent = "";
+      note.style.display = "none";
+    }
+    if (!rows.length) {
+      svg.innerHTML = '<text x="450" y="115" text-anchor="middle" class="axis-label">No rainfall observations are available for this period.</text>';
+      return;
+    }
+    const start = Date.now() - hours * 3600000;
+    const end = Date.now();
+    const maxRain = Math.max(...rows.map(r => Number(r.rainfall_inches)), 0);
+    const ymax = maxRain > 0 ? maxRain * 1.15 : 0.1;
+    const x = t => L + ((Number(t)-start)/(end-start))*pw;
+    const y = v => T + (1-(Number(v)/ymax))*ph;
+    let out = "";
+    for (let i=0;i<=4;i++) {
+      const val = ymax * i / 4;
+      const yy = y(val);
+      out += `<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/>`;
+      out += `<text class="axis-label" x="${L-9}" y="${yy+4}" text-anchor="end">${val.toFixed(2)}</text>`;
+    }
+    for (let i=0;i<=4;i++) {
+      const t = start + (end-start)*i/4;
+      const xx = x(t);
+      const d = new Date(t);
+      const label = hours===24
+        ? new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",hour:"numeric"}).format(d)
+        : new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric"}).format(d);
+      out += `<line class="gridline" x1="${xx}" y1="${T}" x2="${xx}" y2="${H-B}"/>`;
+      out += `<text class="axis-label" x="${xx}" y="${H-15}" text-anchor="middle">${label}</text>`;
+    }
+    const typicalGap = rows.length > 1
+      ? rows.slice(1).reduce((sum,r,i) => sum + (Number(r.obs_time)-Number(rows[i].obs_time)),0)/(rows.length-1)
+      : 3600000;
+    const barWidth = Math.max(1.5, Math.min(18, (typicalGap/(end-start))*pw*0.72));
+    rows.forEach(r => {
+      const xx = x(r.obs_time);
+      const yy = y(r.rainfall_inches);
+      const height = Math.max(0.8, T+ph-yy);
+      out += `<rect class="rain-bar" x="${(xx-barWidth/2).toFixed(2)}" y="${yy.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${height.toFixed(2)}"><title>${Number(r.rainfall_inches).toFixed(2)} in — ${fmtDate(r.obs_time)}</title></rect>`;
+    });
+    out += `<text class="axis-label" x="18" y="${H/2}" text-anchor="middle" transform="rotate(-90 18 ${H/2})" style="font-size:11px;font-weight:700">Rainfall (in)</text>`;
+    svg.innerHTML = out;
+  }
+
+  async function refreshRainfall() {
+    if (!rainfallShown || !selectedGage) return;
+    const requestId = ++rainfallRequestId;
+    try {
+      const stationId = selectedGage.rain_gauge_id;
+      if (stationId === null || stationId === undefined || stationId === "") {
+        $("rainGaugeName").textContent = "Associated rain gauge is not assigned to this stream gage.";
+        $("rainTotal").textContent = "—";
+        $("rainPointCount").textContent = "0 observations";
+        $("rainChart").innerHTML = '<text x="450" y="115" text-anchor="middle" class="axis-label">No associated rain gauge is assigned.</text>';
+        return;
+      }
+      const [name, rows] = await Promise.all([
+        loadRainGaugeName(stationId),
+        loadRainfallObservations(stationId, periodHours)
+      ]);
+      if (requestId !== rainfallRequestId) return;
+      $("rainGaugeName").textContent = "Associated rain gauge: " + (name || "Station " + stationId);
+      renderRainfallChart(rows, periodHours);
+    } catch (err) {
+      if (requestId !== rainfallRequestId) return;
+      $("rainTotal").textContent = "Unavailable";
+      $("rainGaugeName").textContent = "Unable to retrieve associated rain gauge information.";
+      $("rainPointCount").textContent = "Rainfall data unavailable";
+      $("rainChart").innerHTML = '<text x="450" y="115" text-anchor="middle" class="axis-label">Rainfall data could not be loaded.</text>';
+      $("rainNote").textContent = "Rainfall request failed: " + err.message;
+      $("rainNote").style.display = "block";
+    }
   }
 
   function setChip(el, text, kind) {
@@ -531,7 +692,7 @@
     try {
       const freshGages = await queryFeatures(GAGE_LAYER, {
         where:"gage_id = '" + escSql(selectedGage.gage_id) + "'",
-        outFields:"gage_id,provider,gage_name,stage,stage_unit,obs_time,last_update,data_status,qc_status,qc_flags,qc_message,qc_timestamp,qc_version,road_status,road_threshold,distance_to_road,road",
+        outFields:"*",
         returnGeometry:"false"
       });
       if (freshGages.length) {
@@ -540,6 +701,7 @@
       }
       const rows=await loadObservations(selectedGage.gage_id,periodHours);
       renderChart(rows);
+      if (rainfallShown) await refreshRainfall();
       $("refreshNote").textContent="Last checked " + new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",hour:"numeric",minute:"2-digit"}).format(new Date()) + " CT";
       if (!rows.length) showMessage("No stage observations were returned for this gage and time window. The current gage information may still be available.");
     } catch(err) {
@@ -549,6 +711,14 @@
       requestInProgress=false;
     }
   }
+
+  $("rainToggle").addEventListener("click", async ()=>{
+    rainfallShown = !rainfallShown;
+    $("rainCard").hidden = !rainfallShown;
+    $("rainToggle").textContent = rainfallShown ? "Hide Rainfall" : "Show Rainfall";
+    $("rainToggle").setAttribute("aria-expanded", rainfallShown ? "true" : "false");
+    if (rainfallShown) await refreshRainfall();
+  });
 
   $("gageSelect").addEventListener("change", async ev=>{
     selectedGage=gages.find(g=>g.gage_id===ev.target.value);
