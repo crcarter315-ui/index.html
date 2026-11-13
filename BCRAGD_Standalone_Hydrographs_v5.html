@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BCRAGD | Stream Gage Hydrographs</title>
+<style>
+  :root {
+    --navy:#17354b; --blue:#247fae; --blue-light:#eaf4f8;
+    --ink:#20313d; --muted:#657783; --line:#d9e2e7;
+    --paper:#f4f7f8; --white:#fff; --green:#28764b;
+    --amber:#a66a12; --red:#a63e38;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+         font-family:Arial,Helvetica,sans-serif; }
+  .page { max-width:1120px; margin:0 auto; padding:24px 18px 36px; }
+  header { background:var(--navy); color:white; padding:23px 25px; border-radius:12px 12px 0 0; }
+  .eyebrow { font-size:11px; letter-spacing:1.25px; opacity:.82; font-weight:700; }
+  h1 { margin:7px 0 4px; font-size:25px; font-weight:700; }
+  .subtitle { font-size:13px; opacity:.85; }
+  main { background:white; border:1px solid var(--line); border-top:0;
+         border-radius:0 0 12px 12px; padding:22px; }
+  .toolbar { display:flex; align-items:end; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+  label { display:block; font-size:12px; font-weight:700; color:#536570; margin-bottom:7px; }
+  select { min-width:280px; max-width:100%; padding:11px 36px 11px 12px;
+           border:1px solid #bdcbd3; border-radius:7px; background:white;
+           color:var(--ink); font-size:14px; }
+  button { border:1px solid #c7d5dc; background:#fff; color:var(--navy);
+           padding:10px 15px; border-radius:7px; font-size:13px; font-weight:700; cursor:pointer; }
+  button.active { color:white; background:var(--blue); border-color:var(--blue); }
+  button:disabled { opacity:.5; cursor:wait; }
+  .periods { display:flex; gap:7px; }
+  .spacer { flex:1; }
+  .refresh-note { font-size:11px; color:var(--muted); padding-bottom:10px; }
+  .gage-name { font-size:21px; font-weight:700; color:var(--navy); margin:4px 0 3px; }
+  .gage-meta { color:var(--muted); font-size:12px; margin-bottom:17px; }
+  .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+  .metric { background:#f6f9fa; border:1px solid #e2e9ed; border-radius:9px; padding:14px 15px; min-height:84px; }
+  .metric-label { color:var(--muted); text-transform:uppercase; letter-spacing:.55px; font-size:10px; font-weight:700; }
+  .metric-value { font-size:25px; font-weight:700; color:var(--navy); margin-top:7px; }
+  .metric-sub { color:var(--muted); font-size:11px; margin-top:4px; }
+  .road-value { display:flex; align-items:center; gap:8px; }
+  .road-dot { display:inline-block; width:11px; height:11px; flex:0 0 11px;
+              border-radius:50%; background:#9aa6ad; border:1px solid #fff;
+              box-shadow:0 0 0 1px #cbd5da; }
+  .status-row { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 18px; }
+  .status-chip { display:inline-flex; gap:6px; align-items:center; border-radius:20px;
+                 background:#eef2f4; color:#455762; padding:6px 10px; font-size:11px; }
+  .status-chip.current { background:#e8f4ed; color:var(--green); }
+  .status-chip.delayed { background:#fff4df; color:var(--amber); }
+  .status-chip.unavailable { background:#faeae8; color:var(--red); }
+  .chart-card { border:1px solid var(--line); border-radius:10px; padding:16px 14px 10px; }
+  .range-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0 7px; }
+  .range-stat { background:#f6f9fa; border:1px solid #e2e9ed; border-radius:7px; padding:5px 10px; }
+  .range-stat-label { color:var(--muted); text-transform:uppercase; letter-spacing:.45px; font-size:9px; font-weight:700; }
+  .range-stat-value { color:var(--navy); font-size:16px; font-weight:700; margin-top:2px; }
+  .chart-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  h2 { margin:0; font-size:16px; color:var(--navy); }
+  .chart-units { color:var(--muted); font-size:11px; }
+  #chartWrap { position:relative; width:100%; min-height:300px; margin-top:8px; }
+  #chart { display:block; width:100%; height:300px; overflow:visible; }
+  .gridline { stroke:#e6ecef; stroke-width:1; }
+  .axis-label { fill:#687985; font-size:11px; }
+  .stage-line { fill:none; stroke:var(--blue); stroke-width:2.8; stroke-linecap:round; stroke-linejoin:round; }
+  .hover-line { stroke:#6c8797; stroke-width:1; stroke-dasharray:4 4; }
+  .hover-dot { fill:var(--blue); stroke:white; stroke-width:2; }
+  #tooltip { position:absolute; display:none; pointer-events:none; z-index:2;
+             background:#17354b; color:white; padding:8px 10px; border-radius:6px;
+             font-size:11px; line-height:1.5; box-shadow:0 3px 12px #0002; white-space:nowrap; }
+  .chart-footer { display:flex; justify-content:space-between; gap:10px; color:var(--muted);
+                  font-size:11px; padding:2px 5px 4px; flex-wrap:wrap; }
+  .info-panel { margin-top:15px; border:1px solid var(--line); border-radius:9px; padding:14px 15px; }
+  .info-title { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:8px; }
+  .info-text { color:#52636e; font-size:12px; line-height:1.55; }
+  .disclaimer { text-align:center; color:#687985; font-size:11px; font-style:italic; margin:18px 0 2px; }
+  .source { text-align:center; color:#87949c; font-size:10px; margin-top:8px; }
+  .message { display:none; padding:12px 14px; margin:12px 0; border-radius:7px;
+             background:#fff4df; color:#79520f; font-size:12px; line-height:1.5; }
+  .message.error { background:#faeae8; color:#87332e; }
+  .loading { color:var(--muted); font-size:13px; padding:25px 5px; }
+  @media(max-width:650px) {
+    .page { padding:10px 8px 22px; }
+    header { padding:19px 17px; }
+    h1 { font-size:21px; }
+    main { padding:15px 12px; }
+    .metrics { grid-template-columns:1fr 1fr; }
+    .metric:last-child { grid-column:1 / -1; }
+    .range-stats { gap:6px; }
+    .range-stat { padding:5px 7px; }
+    .range-stat-value { font-size:14px; }
+    select { width:100%; min-width:0; }
+    .toolbar > div:first-child { width:100%; }
+    #chart { height:250px; }
+    #chartWrap { min-height:250px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">BANDERA COUNTY RIVER AUTHORITY &amp; GROUNDWATER DISTRICT</div>
+    <h1>Stream Gage Hydrographs</h1>
+    <div class="subtitle">Real-time stream monitoring and recent water-level observations</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <div>
+        <label for="gageSelect">SELECT A STREAM GAGE</label>
+        <select id="gageSelect" disabled><option>Loading stream gages…</option></select>
+      </div>
+      <div>
+        <label>HYDROGRAPH PERIOD</label>
+        <div class="periods">
+          <button id="btn24" class="active" type="button">24 Hours</button>
+          <button id="btn7" type="button">7 Days</button>
+          <button id="btn30" type="button">30 Days</button>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div class="refresh-note" id="refreshNote">Connecting to public monitoring data…</div>
+    </div>
+
+    <div id="message" class="message"></div>
+    <div id="loading" class="loading">Loading public stream gage information…</div>
+
+    <section id="gageContent" hidden>
+      <div class="gage-name" id="gageName">—</div>
+      <div class="gage-meta" id="gageMeta">—</div>
+
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Current water level</div>
+          <div class="metric-value" id="currentStage">—</div>
+          <div class="metric-sub" id="stageTime">Observation time unavailable</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Data status</div>
+          <div class="metric-value" id="dataStatus" style="font-size:19px">—</div>
+          <div class="metric-sub" id="lastUpdate">Last update unavailable</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Road condition</div>
+          <div class="metric-value road-value" style="font-size:19px"><span class="road-dot" id="roadStatusDot" aria-hidden="true"></span><span id="roadStatus">—</span></div>
+          <div class="metric-sub" id="roadThreshold">Threshold not provided</div>
+        </div>
+      </div>
+
+      <div class="status-row">
+        <span class="status-chip" id="qcChip">Quality status: —</span>
+        <span class="status-chip" id="providerChip">Provider: —</span>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-head">
+          <h2>Water Level Hydrograph</h2>
+          <div class="chart-units" id="chartUnits">Stage (ft)</div>
+        </div>
+        <div class="range-stats" aria-label="Statistics for selected hydrograph period">
+          <div class="range-stat">
+            <div class="range-stat-label">Minimum</div>
+            <div class="range-stat-value" id="rangeMin">—</div>
+          </div>
+          <div class="range-stat">
+            <div class="range-stat-label">Maximum</div>
+            <div class="range-stat-value" id="rangeMax">—</div>
+          </div>
+          <div class="range-stat">
+            <div class="range-stat-label">Range</div>
+            <div class="range-stat-value" id="rangeValue">—</div>
+          </div>
+        </div>
+        <div id="chartWrap">
+          <svg id="chart" viewBox="0 0 900 300" role="img" aria-label="Water level hydrograph">
+            <text x="450" y="145" text-anchor="middle" class="axis-label">Waiting for observations…</text>
+          </svg>
+          <div id="tooltip"></div>
+        </div>
+        <div class="chart-footer">
+          <span id="pointCount">0 observations</span>
+          <span>Hover over the line to inspect observations</span>
+        </div>
+      </div>
+
+      <div class="info-panel" id="qcPanel">
+        <div class="info-title">Monitoring information</div>
+        <div class="info-text" id="qcMessage">Quality-control information will appear here when available.</div>
+      </div>
+    </section>
+
+    <div class="disclaimer">This data is considered provisional.</div>
+    <div class="source">Data provided by BCRAGD public stream monitoring services.</div>
+  </main>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const SERVICE = "https://services3.arcgis.com/wqgvFuY8FlZhOIIy/arcgis/rest/services/Stream_Gages_(Public)/FeatureServer";
+  const GAGE_LAYER = SERVICE + "/0";
+  const OBS_TABLE = SERVICE + "/2";
+  const PAGE_SIZE = 1000;
+  const REFRESH_MS = 5 * 60 * 1000;
+
+  const $ = id => document.getElementById(id);
+  let gages = [];
+  let selectedGage = null;
+  let periodHours = 24;
+  let observations = [];
+  let refreshTimer = null;
+  let requestInProgress = false;
+
+  function showMessage(text, isError=false) {
+    const el = $("message");
+    el.textContent = text;
+    el.className = "message" + (isError ? " error" : "");
+    el.style.display = "block";
+  }
+  function clearMessage() { $("message").style.display = "none"; }
+
+  function fmtDate(value, includeSeconds=false) {
+    if (value === null || value === undefined || value === "") return "Unavailable";
+    const d = new Date(Number(value));
+    if (isNaN(d.getTime())) return "Unavailable";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      month:"short", day:"numeric", year:"numeric",
+      hour:"numeric", minute:"2-digit",
+      ...(includeSeconds ? {second:"2-digit"} : {})
+    }).format(d) + " CT";
+  }
+  function fmtNumber(value, digits=2) {
+    const n = Number(value);
+    return value === null || value === undefined || value === "" || !Number.isFinite(n)
+      ? "—" : n.toFixed(digits);
+  }
+  function escSql(value) { return String(value).replace(/'/g, "''"); }
+
+  async function queryFeatures(url, params) {
+    const all = [];
+    let offset = 0;
+    for (let page = 0; page < 30; page++) {
+      const p = new URLSearchParams({
+        f:"json", ...params,
+        resultOffset:String(offset),
+        resultRecordCount:String(PAGE_SIZE)
+      });
+      const response = await fetch(url + "/query?" + p.toString(), {mode:"cors"});
+      if (!response.ok) throw new Error("ArcGIS request failed (HTTP " + response.status + ").");
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message || "ArcGIS returned a query error.");
+      const features = data.features || [];
+      all.push(...features.map(f => f.attributes || {}));
+      if (!data.exceededTransferLimit || features.length === 0) break;
+      offset += features.length;
+    }
+    return all;
+  }
+
+  async function loadGages() {
+    const rows = await queryFeatures(GAGE_LAYER, {
+      where:"1=1",
+      outFields:"gage_id,provider,gage_name,stage,stage_unit,obs_time,last_update,data_status,qc_status,qc_flags,qc_message,qc_timestamp,qc_version,road_status,road_threshold,distance_to_road,road",
+      returnGeometry:"false",
+      orderByFields:"gage_name ASC"
+    });
+    gages = rows.filter(g => g.gage_id).sort((a,b) =>
+      String(a.gage_name || a.gage_id).localeCompare(String(b.gage_name || b.gage_id))
+    );
+    if (!gages.length) throw new Error("The public gage layer returned no stations.");
+    const select = $("gageSelect");
+    select.innerHTML = "";
+    gages.forEach((g, i) => {
+      const option = document.createElement("option");
+      option.value = g.gage_id;
+      option.textContent = (g.gage_name || g.gage_id) + " (" + g.gage_id + ")";
+      select.appendChild(option);
+      if (i === 0) selectedGage = g;
+    });
+    select.disabled = false;
+    select.value = selectedGage.gage_id;
+    $("gageContent").hidden = false;
+    $("loading").style.display = "none";
+    await refreshSelectedGage();
+  }
+
+  async function loadObservations(gageId, hours) {
+    const start = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const sqlDate = start.toISOString().slice(0,19).replace("T"," ");
+    const where = "gage_id = '" + escSql(gageId) + "' AND obs_time >= TIMESTAMP '" + sqlDate + "'";
+    const rows = await queryFeatures(OBS_TABLE, {
+      where,
+      outFields:"OBJECTID,gage_id,gage_name,provider,obs_time,stage,stage_unit,qc_status,qc_flags,qc_message,qc_timestamp,qc_version",
+      returnGeometry:"false",
+      orderByFields:"obs_time ASC, OBJECTID ASC"
+    });
+    return rows.filter(r => r.obs_time !== null && r.stage !== null && Number.isFinite(Number(r.stage)))
+      .sort((a,b) => Number(a.obs_time) - Number(b.obs_time));
+  }
+
+  function setChip(el, text, kind) {
+    el.textContent = text;
+    el.className = "status-chip" + (kind ? " " + kind : "");
+  }
+
+  function updateGageDetails(g) {
+    $("gageName").textContent = g.gage_name || "Unnamed stream gage";
+    $("gageMeta").textContent = (g.provider || "Provider unavailable") + "  •  " + g.gage_id;
+    const unit = g.stage_unit || "";
+    $("currentStage").textContent = g.stage === null || g.stage === undefined ? "—" :
+      fmtNumber(g.stage) + (unit ? " " + unit : "");
+    $("stageTime").textContent = "Observation: " + fmtDate(g.obs_time);
+    $("dataStatus").textContent = g.data_status || "Unavailable";
+    $("lastUpdate").textContent = "Last update: " + fmtDate(g.last_update);
+    const roadStatusText = String(g.road_status || "Not established");
+    $("roadStatus").textContent = roadStatusText;
+    const roadStatusLower = roadStatusText.toLowerCase();
+    let roadColor = "#9aa6ad";
+    if (roadStatusLower.includes("over road") || roadStatusLower.includes("water over")) {
+      roadColor = "#b83b35"; // Red: water over the road
+    } else if (roadStatusLower.includes("near road") || roadStatusLower.includes("water near")) {
+      roadColor = "#d99a22"; // Amber: water near the road
+    } else if (roadStatusLower.includes("clear")) {
+      roadColor = "#2f8a57"; // Green: clear
+    }
+    $("roadStatusDot").style.backgroundColor = roadColor;
+    $("roadStatus").style.color = roadColor;
+    $("roadThreshold").textContent = g.road_threshold === null || g.road_threshold === undefined
+      ? "Threshold not established"
+      : "Water-over-road threshold: " + fmtNumber(g.road_threshold) + (unit ? " " + unit : "");
+    const status = String(g.data_status || "").toLowerCase();
+    const dataKind = status.includes("current") ? "current" :
+                     status.includes("delay") ? "delayed" :
+                     status.includes("unavailable") || status.includes("unknown") ? "unavailable" : "";
+    setChip($("qcChip"), "Quality status: " + (g.qc_status || "Not reported"), "");
+    setChip($("providerChip"), "Provider: " + (g.provider || "Not reported"), "");
+    $("qcMessage").textContent = [
+      g.qc_message || "",
+      g.qc_flags ? "Quality flags: " + g.qc_flags : "",
+      g.qc_version ? "QA/QC version: " + g.qc_version : "",
+      g.qc_timestamp ? "Last quality evaluation: " + fmtDate(g.qc_timestamp) : ""
+    ].filter(Boolean).join("  ") || "No additional QA/QC message is available.";
+    $("chartUnits").textContent = "Stage (" + (unit || "units not specified") + ")";
+    $("dataStatus").style.color = dataKind === "current" ? "var(--green)" :
+      dataKind === "delayed" ? "var(--amber)" :
+      dataKind === "unavailable" ? "var(--red)" : "var(--navy)";
+  }
+
+  function renderChart(rows) {
+    observations = rows;
+    const svg = $("chart");
+    const W=900, H=300, L=90, R=24, T=18, B=48;
+    const pw=W-L-R, ph=H-T-B;
+    if (!rows.length) {
+      $("rangeMin").textContent = "—";
+      $("rangeMax").textContent = "—";
+      $("rangeValue").textContent = "—";
+      svg.innerHTML = '<text x="450" y="145" text-anchor="middle" class="axis-label">No stage observations found for this period.</text>';
+      $("pointCount").textContent = "0 observations";
+      return;
+    }
+    const xs = rows.map(r => Number(r.obs_time));
+    const ys = rows.map(r => Number(r.stage));
+    const minStage = Math.min(...ys);
+    const maxStage = Math.max(...ys);
+    const stageUnit = rows.find(r => r.stage_unit)?.stage_unit || selectedGage.stage_unit || "";
+    const unitSuffix = stageUnit ? " " + stageUnit : "";
+    $("rangeMin").textContent = fmtNumber(minStage) + unitSuffix;
+    $("rangeMax").textContent = fmtNumber(maxStage) + unitSuffix;
+    $("rangeValue").textContent = fmtNumber(maxStage - minStage) + unitSuffix;
+    let xmin = Math.min(...xs), xmax = Math.max(...xs);
+    if (xmin === xmax) { xmin -= 60000; xmax += 60000; }
+    let ymin = Math.min(...ys), ymax = Math.max(...ys);
+    if (ymin === ymax) { ymin -= 0.5; ymax += 0.5; }
+    const pad=(ymax-ymin)*0.12; ymin-=pad; ymax+=pad;
+    const x = v => L + ((v-xmin)/(xmax-xmin))*pw;
+    const y = v => T + ((ymax-v)/(ymax-ymin))*ph;
+
+    let out = `<text class="axis-label" x="20" y="${H/2}" text-anchor="middle" transform="rotate(-90 20 ${H/2})" style="font-size:12px;font-weight:700">Gage Height (ft)</text>`;
+    const yTicks=5;
+    for(let i=0;i<=yTicks;i++){
+      const val=ymin+(ymax-ymin)*i/yTicks, yy=y(val);
+      out += `<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/>`;
+      out += `<text class="axis-label" x="${L-10}" y="${yy+4}" text-anchor="end">${val.toFixed(2)}</text>`;
+    }
+    const xTicks=5;
+    for(let i=0;i<=xTicks;i++){
+      const val=xmin+(xmax-xmin)*i/xTicks, xx=x(val);
+      const d=new Date(val);
+      const label=periodHours===24
+        ? new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",hour:"numeric"}).format(d)
+        : new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric"}).format(d);
+      out += `<line class="gridline" x1="${xx}" y1="${T}" x2="${xx}" y2="${H-B}"/>`;
+      out += `<text class="axis-label" x="${xx}" y="${H-19}" text-anchor="middle">${label}</text>`;
+    }
+    let path="";
+    rows.forEach((r,i)=>{ path+=(i?"L":"M")+x(Number(r.obs_time)).toFixed(2)+","+y(Number(r.stage)).toFixed(2)+" "; });
+    out += `<path class="stage-line" d="${path}"/>`;
+    out += `<line id="hoverLine" class="hover-line" x1="0" y1="${T}" x2="0" y2="${H-B}" visibility="hidden"/>`;
+    out += `<circle id="hoverDot" class="hover-dot" cx="0" cy="0" r="5" visibility="hidden"/>`;
+    out += `<rect id="hitArea" x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent" style="cursor:crosshair"/>`;
+    svg.innerHTML=out;
+    $("pointCount").textContent = rows.length.toLocaleString() + " observations";
+    const hit=svg.querySelector("#hitArea");
+    const hoverLine=svg.querySelector("#hoverLine");
+    const hoverDot=svg.querySelector("#hoverDot");
+    const tooltip=$("tooltip");
+    hit.addEventListener("pointermove", ev=>{
+      const rect=svg.getBoundingClientRect();
+      const svgX=(ev.clientX-rect.left)/rect.width*W;
+      const target=xmin+((svgX-L)/pw)*(xmax-xmin);
+      let lo=0, hi=rows.length-1;
+      while(lo<hi){const mid=(lo+hi)>>1;if(Number(rows[mid].obs_time)<target)lo=mid+1;else hi=mid;}
+      const idx = lo>0 && Math.abs(Number(rows[lo-1].obs_time)-target)<Math.abs(Number(rows[lo].obs_time)-target) ? lo-1 : lo;
+      const r=rows[idx], xx=x(Number(r.obs_time)), yy=y(Number(r.stage));
+      hoverLine.setAttribute("x1",xx); hoverLine.setAttribute("x2",xx); hoverLine.setAttribute("visibility","visible");
+      hoverDot.setAttribute("cx",xx); hoverDot.setAttribute("cy",yy); hoverDot.setAttribute("visibility","visible");
+      tooltip.innerHTML="<strong>"+fmtNumber(r.stage)+" "+(r.stage_unit||selectedGage.stage_unit||"")+"</strong><br>"+fmtDate(r.obs_time);
+      tooltip.style.display="block";
+      const wrapRect=$("chartWrap").getBoundingClientRect();
+      let left=ev.clientX-wrapRect.left+12;
+      let top=ev.clientY-wrapRect.top-48;
+      if(left>wrapRect.width-180) left-=190;
+      if(top<0) top=8;
+      tooltip.style.left=left+"px"; tooltip.style.top=top+"px";
+    });
+    hit.addEventListener("pointerleave",()=>{
+      hoverLine.setAttribute("visibility","hidden");
+      hoverDot.setAttribute("visibility","hidden");
+      tooltip.style.display="none";
+    });
+  }
+
+  async function refreshSelectedGage() {
+    if (!selectedGage || requestInProgress) return;
+    requestInProgress=true;
+    clearMessage();
+    $("refreshNote").textContent="Updating…";
+    try {
+      const freshGages = await queryFeatures(GAGE_LAYER, {
+        where:"gage_id = '" + escSql(selectedGage.gage_id) + "'",
+        outFields:"gage_id,provider,gage_name,stage,stage_unit,obs_time,last_update,data_status,qc_status,qc_flags,qc_message,qc_timestamp,qc_version,road_status,road_threshold,distance_to_road,road",
+        returnGeometry:"false"
+      });
+      if (freshGages.length) {
+        selectedGage=freshGages[0];
+        updateGageDetails(selectedGage);
+      }
+      const rows=await loadObservations(selectedGage.gage_id,periodHours);
+      renderChart(rows);
+      $("refreshNote").textContent="Last checked " + new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",hour:"numeric",minute:"2-digit"}).format(new Date()) + " CT";
+      if (!rows.length) showMessage("No stage observations were returned for this gage and time window. The current gage information may still be available.");
+    } catch(err) {
+      showMessage("Unable to retrieve monitoring data: " + err.message + " Check your internet connection and confirm that the public ArcGIS service permits queries.", true);
+      $("refreshNote").textContent="Update failed";
+    } finally {
+      requestInProgress=false;
+    }
+  }
+
+  $("gageSelect").addEventListener("change", async ev=>{
+    selectedGage=gages.find(g=>g.gage_id===ev.target.value);
+    if(selectedGage) await refreshSelectedGage();
+  });
+  async function selectPeriod(hours) {
+    periodHours=hours;
+    ["btn24","btn7","btn30"].forEach(id => $(id).classList.remove("active"));
+    $(hours===24 ? "btn24" : hours===168 ? "btn7" : "btn30").classList.add("active");
+    await refreshSelectedGage();
+  }
+  $("btn24").addEventListener("click", ()=>selectPeriod(24));
+  $("btn7").addEventListener("click", ()=>selectPeriod(168));
+  $("btn30").addEventListener("click", ()=>selectPeriod(720));
+
+  loadGages().catch(err=>{
+    $("loading").style.display="none";
+    showMessage("Could not load the public gage list: " + err.message + " This may be caused by a network connection or browser cross-origin restriction.", true);
+    $("gageSelect").disabled=false;
+    $("gageSelect").innerHTML="<option>Unable to load gages</option>";
+  });
+
+  refreshTimer=setInterval(()=>{
+    if(selectedGage) refreshSelectedGage();
+    else loadGages().catch(()=>{});
+  },REFRESH_MS);
+})();
+</script>
+</body>
+</html>
