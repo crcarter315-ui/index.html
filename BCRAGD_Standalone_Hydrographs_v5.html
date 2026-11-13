@@ -36,15 +36,10 @@
   .chart-title-group { display:flex; flex-direction:column; gap:5px; min-width:0; }
   .chart-title-row { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
   .chart-gage-id { color:var(--muted); font-size:11px; }
-  .metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
-  .metric { background:#f6f9fa; border:1px solid #e2e9ed; border-radius:9px; padding:14px 15px; min-height:84px; }
-  .metric-label { color:var(--muted); text-transform:uppercase; letter-spacing:.55px; font-size:10px; font-weight:700; }
-  .metric-value { font-size:25px; font-weight:700; color:var(--navy); margin-top:7px; }
-  .metric-sub { color:var(--muted); font-size:11px; margin-top:4px; }
-  .road-value { display:flex; align-items:center; gap:8px; }
-  .road-dot { display:inline-block; width:11px; height:11px; flex:0 0 11px;
-              border-radius:50%; background:#9aa6ad; border:1px solid #fff;
-              box-shadow:0 0 0 1px #cbd5da; }
+  .current-stage-inline { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-top:3px; }
+  .current-stage-label { color:var(--muted); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.45px; }
+  .current-stage-value { color:var(--navy); font-size:17px; font-weight:700; }
+  .current-stage-time { color:var(--muted); font-size:10px; }
   .status-row { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 18px; }
   .status-chip { display:inline-flex; gap:6px; align-items:center; border-radius:20px;
                  background:#eef2f4; color:#455762; padding:6px 10px; font-size:11px; }
@@ -64,6 +59,10 @@
   .gridline { stroke:#e6ecef; stroke-width:1; }
   .axis-label { fill:#687985; font-size:11px; }
   .stage-line { fill:none; stroke:var(--blue); stroke-width:2.8; stroke-linecap:round; stroke-linejoin:round; }
+  .threshold-line { stroke:#c43d36; stroke-width:2.2; stroke-dasharray:9 6; }
+  .threshold-label { fill:#a8322c; font-size:11px; font-weight:700; }
+  .threshold-toggle { padding:8px 12px; font-size:11px; white-space:nowrap; }
+  .threshold-toggle.active { color:#fff; background:#b83b35; border-color:#b83b35; }
   .hover-line { stroke:#6c8797; stroke-width:1; stroke-dasharray:4 4; }
   .hover-dot { fill:var(--blue); stroke:white; stroke-width:2; }
   #tooltip { position:absolute; display:none; pointer-events:none; z-index:2;
@@ -112,7 +111,6 @@
     header { padding:19px 17px; }
     h1 { font-size:21px; }
     main { padding:15px 12px; }
-    .metrics { grid-template-columns:1fr 1fr; }
     .range-stats { gap:6px; }
     .range-stat { padding:5px 7px; }
     .range-stat-value { font-size:14px; }
@@ -160,8 +158,16 @@
               <span class="status-chip unavailable" id="headerDataStatus">Unavailable</span>
             </div>
             <div class="chart-gage-id" id="chartGageId">Gage ID: —</div>
+            <div class="current-stage-inline">
+              <span class="current-stage-label">Current Water Level</span>
+              <span class="current-stage-value" id="currentStage">—</span>
+              <span class="current-stage-time" id="stageTime">Observation time unavailable</span>
+            </div>
           </div>
-          <div class="chart-units" id="chartUnits">Stage (ft)</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button id="thresholdToggle" class="threshold-toggle" type="button" aria-pressed="false" disabled>Threshold unavailable</button>
+            <div class="chart-units" id="chartUnits">Stage (ft)</div>
+          </div>
         </div>
         <div class="range-stats" aria-label="Statistics for selected hydrograph period">
           <div class="range-stat">
@@ -221,18 +227,6 @@
         </div>
       </section>
 
-      <div class="metrics">
-        <div class="metric">
-          <div class="metric-label">Current water level</div>
-          <div class="metric-value" id="currentStage">—</div>
-          <div class="metric-sub" id="stageTime">Observation time unavailable</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Road condition</div>
-          <div class="metric-value road-value" style="font-size:19px"><span class="road-dot" id="roadStatusDot" aria-hidden="true"></span><span id="roadStatus">—</span></div>
-          <div class="metric-sub" id="roadThreshold">Threshold not provided</div>
-        </div>
-      </div>
 
       <div class="status-row">
         <span class="status-chip" id="qcChip">Quality status: —</span>
@@ -274,6 +268,7 @@
   let requestInProgress = false;
   let rainfallShown = false;
   let rainfallRequestId = 0;
+  let thresholdShown = false;
 
   function showMessage(text, isError=false) {
     const el = $("message");
@@ -535,22 +530,15 @@
     $("currentStage").textContent = g.stage === null || g.stage === undefined ? "—" :
       fmtNumber(g.stage) + (unit ? " " + unit : "");
     $("stageTime").textContent = "Observation: " + fmtDate(g.obs_time);
-    const roadStatusText = String(g.road_status || "Not established");
-    $("roadStatus").textContent = roadStatusText;
-    const roadStatusLower = roadStatusText.toLowerCase();
-    let roadColor = "#9aa6ad";
-    if (roadStatusLower.includes("over road") || roadStatusLower.includes("water over")) {
-      roadColor = "#b83b35"; // Red: water over the road
-    } else if (roadStatusLower.includes("near road") || roadStatusLower.includes("water near")) {
-      roadColor = "#d99a22"; // Amber: water near the road
-    } else if (roadStatusLower.includes("clear")) {
-      roadColor = "#2f8a57"; // Green: clear
-    }
-    $("roadStatusDot").style.backgroundColor = roadColor;
-    $("roadStatus").style.color = roadColor;
-    $("roadThreshold").textContent = g.road_threshold === null || g.road_threshold === undefined
-      ? "Threshold not established"
-      : "Water-over-road threshold: " + fmtNumber(g.road_threshold) + (unit ? " " + unit : "");
+    const hasRoadThreshold = g.road_threshold !== null && g.road_threshold !== undefined &&
+      g.road_threshold !== "" && Number.isFinite(Number(g.road_threshold));
+    const thresholdButton = $("thresholdToggle");
+    thresholdButton.disabled = !hasRoadThreshold;
+    thresholdButton.textContent = hasRoadThreshold
+      ? (thresholdShown ? "Hide Road Threshold" : "Show Road Threshold")
+      : "Threshold unavailable";
+    thresholdButton.classList.toggle("active", hasRoadThreshold && thresholdShown);
+    thresholdButton.setAttribute("aria-pressed", hasRoadThreshold && thresholdShown ? "true" : "false");
     const status = String(g.data_status || "").toLowerCase();
     const dataKind = status.includes("current") ? "current" :
                      status.includes("delay") ? "delayed" :
@@ -599,6 +587,13 @@
     let xmin = Math.min(...xs), xmax = Math.max(...xs);
     if (xmin === xmax) { xmin -= 60000; xmax += 60000; }
     let ymin = Math.min(...ys), ymax = Math.max(...ys);
+    const thresholdValue = selectedGage && selectedGage.road_threshold !== null &&
+      selectedGage.road_threshold !== undefined && selectedGage.road_threshold !== "" &&
+      Number.isFinite(Number(selectedGage.road_threshold)) ? Number(selectedGage.road_threshold) : null;
+    if (thresholdShown && thresholdValue !== null) {
+      ymin = Math.min(ymin, thresholdValue);
+      ymax = Math.max(ymax, thresholdValue);
+    }
     if (ymin === ymax) { ymin -= 0.5; ymax += 0.5; }
     const pad=(ymax-ymin)*0.12; ymin-=pad; ymax+=pad;
     const x = v => L + ((v-xmin)/(xmax-xmin))*pw;
@@ -620,6 +615,12 @@
         : new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric"}).format(d);
       out += `<line class="gridline" x1="${xx}" y1="${T}" x2="${xx}" y2="${H-B}"/>`;
       out += `<text class="axis-label" x="${xx}" y="${H-19}" text-anchor="middle">${label}</text>`;
+    }
+    if (thresholdShown && thresholdValue !== null) {
+      const thresholdY = y(thresholdValue);
+      const thresholdUnit = stageUnit || "ft";
+      out += `<line class="threshold-line" x1="${L}" y1="${thresholdY}" x2="${W-R}" y2="${thresholdY}"/>`;
+      out += `<text class="threshold-label" x="${W-R-4}" y="${Math.max(T+12, thresholdY-7)}" text-anchor="end">Road threshold: ${fmtNumber(thresholdValue)} ${thresholdUnit}</text>`;
     }
     let path="";
     rows.forEach((r,i)=>{ path+=(i?"L":"M")+x(Number(r.obs_time)).toFixed(2)+","+y(Number(r.stage)).toFixed(2)+" "; });
@@ -711,6 +712,17 @@
       requestInProgress=false;
     }
   }
+
+  $("thresholdToggle").addEventListener("click", ()=>{
+    if (!selectedGage || selectedGage.road_threshold === null ||
+        selectedGage.road_threshold === undefined || selectedGage.road_threshold === "" ||
+        !Number.isFinite(Number(selectedGage.road_threshold))) return;
+    thresholdShown = !thresholdShown;
+    $("thresholdToggle").textContent = thresholdShown ? "Hide Road Threshold" : "Show Road Threshold";
+    $("thresholdToggle").classList.toggle("active", thresholdShown);
+    $("thresholdToggle").setAttribute("aria-pressed", thresholdShown ? "true" : "false");
+    renderChart(observations);
+  });
 
   $("rainToggle").addEventListener("click", async ()=>{
     rainfallShown = !rainfallShown;
