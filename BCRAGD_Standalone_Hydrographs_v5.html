@@ -417,11 +417,13 @@
       .sort((a,b) => Number(a.obs_time) - Number(b.obs_time));
   }
 
-  // Search the complete observation history for this gage, not just the
-  // current gage-layer summary or the currently selected chart period.
-  // A single matching row is sufficient to identify a historical review flag.
-  async function queryHistoricalQcRecord(gageId, status) {
-    const where = "gage_id = '" + escSql(gageId) + "' AND qc_status = '" + status + "'";
+  // Search only the selected chart period for this gage. The QA/QC window
+  // uses the same time boundary as loadObservations(), so older flags do not
+  // carry forward when the user changes the 24-hour, 7-day, or 30-day tab.
+  async function queryHistoricalQcRecord(gageId, status, hours) {
+    const start = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const sqlDate = start.toISOString().slice(0,19).replace("T"," ");
+    const where = "gage_id = '" + escSql(gageId) + "' AND qc_status = '" + status + "' AND obs_time >= TIMESTAMP '" + sqlDate + "'";
     const params = new URLSearchParams({
       f:"json",
       where,
@@ -437,13 +439,13 @@
     return (data.features || []).length ? data.features[0].attributes : null;
   }
 
-  async function loadHistoricalQcStatus(gageId) {
-    // Search the entire observation history. Any Review flag takes precedence.
-    const flaggedRecord = await queryHistoricalQcRecord(gageId, "Review");
+  async function loadHistoricalQcStatus(gageId, hours) {
+    // Any Review flag within the selected period takes precedence.
+    const flaggedRecord = await queryHistoricalQcRecord(gageId, "Review", hours);
     if (flaggedRecord) return {status:"review", record:flaggedRecord};
 
-    // Unknown means at least one configured check could not be evaluated.
-    const unknownRecord = await queryHistoricalQcRecord(gageId, "Unknown");
+    // Unknown means at least one configured check in this period could not be evaluated.
+    const unknownRecord = await queryHistoricalQcRecord(gageId, "Unknown", hours);
     if (unknownRecord) return {status:"unknown", record:unknownRecord};
 
     return {status:"pass", record:null};
@@ -459,7 +461,7 @@
       const record = result.record;
       setChip($("qcChip"), "🟡 Anomaly Detected — Flagged for Review", "review");
       $("qcMessage").textContent = [
-        record.qc_message || "A historical observation was flagged by QA/QC.",
+        record.qc_message || "An observation in the selected time range was flagged by QA/QC.",
         record.qc_flags ? "Quality flags: " + record.qc_flags : "",
         record.obs_time ? "Flagged observation: " + fmtDate(record.obs_time) : ""
       ].filter(Boolean).join("  ");
@@ -469,13 +471,13 @@
       const record = result.record;
       setChip($("qcChip"), "QA/QC checks incomplete", "");
       $("qcMessage").textContent = [
-        record.qc_message || "At least one historical measurement could not be evaluated by all configured QA/QC checks.",
+        record.qc_message || "At least one measurement in the selected time range could not be evaluated by all configured QA/QC checks.",
         record.obs_time ? "Observation: " + fmtDate(record.obs_time) : ""
       ].filter(Boolean).join("  ");
       return;
     }
     setChip($("qcChip"), "✓ All configured QA/QC checks passed", "pass");
-    $("qcMessage").textContent = "All recorded measurements in the observation history passed the configured QA/QC checks; no review flags were found.";
+    $("qcMessage").textContent = "No review flags or incomplete checks were found in the selected time range.";
   }
 
   async function loadRainGaugeName(stationId) {
@@ -772,7 +774,7 @@
       }
       const [rows, qcResult] = await Promise.all([
         loadObservations(selectedGage.gage_id,periodHours),
-        loadHistoricalQcStatus(selectedGage.gage_id).then(result => ({result, error:""}))
+        loadHistoricalQcStatus(selectedGage.gage_id,periodHours).then(result => ({result, error:""}))
           .catch(err => ({result:null, error:err.message}))
       ]);
       renderChart(rows);
