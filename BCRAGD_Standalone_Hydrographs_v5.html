@@ -276,10 +276,23 @@
       option.value = g.gage_id;
       option.textContent = (g.gage_name || g.gage_id) + " (" + g.gage_id + ")";
       select.appendChild(option);
-      if (i === 0) selectedGage = g;
     });
+
+    // If the page was opened from a monitoring pop-up, use its gage_id
+    // query parameter instead of defaulting to the first gage in the list.
+    const requestedGageId = new URLSearchParams(window.location.search).get("gage_id");
+    const requestedGage = requestedGageId
+      ? gages.find(g => String(g.gage_id).trim() === requestedGageId.trim())
+      : null;
+
+    selectedGage = requestedGage || gages[0];
+
     select.disabled = false;
-    select.value = selectedGage.gage_id;
+    select.value = String(selectedGage.gage_id);
+
+    if (requestedGageId && !requestedGage) {
+      showMessage("The requested gage ID (" + requestedGageId + ") was not found in the public gage list. Please select a gage from the dropdown.");
+    }
     $("gageContent").hidden = false;
     $("loading").style.display = "none";
     await refreshSelectedGage();
