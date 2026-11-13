@@ -33,9 +33,10 @@
   .periods { display:flex; gap:7px; }
   .spacer { flex:1; }
   .refresh-note { font-size:11px; color:var(--muted); padding-bottom:10px; }
-  .gage-name { font-size:21px; font-weight:700; color:var(--navy); margin:4px 0 3px; }
-  .gage-meta { color:var(--muted); font-size:12px; margin-bottom:17px; }
-  .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+  .chart-title-group { display:flex; flex-direction:column; gap:5px; min-width:0; }
+  .chart-title-row { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .chart-gage-id { color:var(--muted); font-size:11px; }
+  .metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
   .metric { background:#f6f9fa; border:1px solid #e2e9ed; border-radius:9px; padding:14px 15px; min-height:84px; }
   .metric-label { color:var(--muted); text-transform:uppercase; letter-spacing:.55px; font-size:10px; font-weight:700; }
   .metric-value { font-size:25px; font-weight:700; color:var(--navy); margin-top:7px; }
@@ -68,14 +69,20 @@
   #tooltip { position:absolute; display:none; pointer-events:none; z-index:2;
              background:#17354b; color:white; padding:8px 10px; border-radius:6px;
              font-size:11px; line-height:1.5; box-shadow:0 3px 12px #0002; white-space:nowrap; }
-  .chart-slider-wrap { margin:10px 5px 8px; padding:10px 12px 8px;
+  .chart-slider-wrap { margin:10px 0 8px; padding:10px 0 8px;
                        background:#f6f9fa; border:1px solid #e2e9ed; border-radius:8px; }
   .chart-slider-labels { display:flex; justify-content:space-between; align-items:center;
-                         gap:10px; flex-wrap:wrap; margin-bottom:7px; }
+                         gap:10px; flex-wrap:wrap; margin:0 12px 7px; }
   .chart-slider-labels label { margin:0; font-size:9px; letter-spacing:.45px; }
   #sliderReadout { color:var(--navy); font-size:11px; font-weight:700; }
-  #chartSlider { display:block; width:100%; height:28px; margin:0; cursor:pointer;
+  /* Align the slider's thumb travel with the plotted data area (SVG x=90 to x=876). */
+  #chartSlider { display:block; width:calc(87.333% + 16px); height:28px;
+                 margin:0 0 0 calc(10% - 8px); cursor:pointer;
                  accent-color:var(--blue); touch-action:pan-y; }
+  #chartSlider::-webkit-slider-runnable-track { height:6px; border-radius:4px; }
+  #chartSlider::-moz-range-track { height:6px; border-radius:4px; }
+  #chartSlider::-webkit-slider-thumb { width:16px; height:16px; margin-top:-5px; }
+  #chartSlider::-moz-range-thumb { width:16px; height:16px; }
   #chartSlider:disabled { opacity:.45; cursor:default; }
   .chart-footer { display:flex; justify-content:space-between; gap:10px; color:var(--muted);
                   font-size:11px; padding:2px 5px 4px; flex-wrap:wrap; }
@@ -94,7 +101,6 @@
     h1 { font-size:21px; }
     main { padding:15px 12px; }
     .metrics { grid-template-columns:1fr 1fr; }
-    .metric:last-child { grid-column:1 / -1; }
     .range-stats { gap:6px; }
     .range-stat { padding:5px 7px; }
     .range-stat-value { font-size:14px; }
@@ -136,7 +142,13 @@
     <section id="gageContent" hidden>
       <div class="chart-card">
         <div class="chart-head">
-          <h2 id="chartTitle">Stream Gage</h2>
+          <div class="chart-title-group">
+            <div class="chart-title-row">
+              <h2 id="chartTitle">Stream Gage</h2>
+              <span class="status-chip unavailable" id="headerDataStatus">Unavailable</span>
+            </div>
+            <div class="chart-gage-id" id="chartGageId">Gage ID: —</div>
+          </div>
           <div class="chart-units" id="chartUnits">Stage (ft)</div>
         </div>
         <div class="range-stats" aria-label="Statistics for selected hydrograph period">
@@ -168,22 +180,15 @@
         </div>
         <div class="chart-footer">
           <span id="pointCount">0 observations</span>
-          <span>Hover over the line to inspect observations</span>
+          <span>Use the slider to inspect observations</span>
         </div>
       </div>
-
-      <div class="gage-name" id="gageName">—</div>
-      <div class="gage-meta" id="gageMeta">—</div>
 
       <div class="metrics">
         <div class="metric">
           <div class="metric-label">Current water level</div>
           <div class="metric-value" id="currentStage">—</div>
           <div class="metric-sub" id="stageTime">Observation time unavailable</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Data status</div>
-          <div class="metric-value" id="dataStatus" style="font-size:19px">—</div>
         </div>
         <div class="metric">
           <div class="metric-label">Road condition</div>
@@ -281,9 +286,38 @@
       returnGeometry:"false",
       orderByFields:"gage_name ASC"
     });
-    gages = rows.filter(g => g.gage_id).sort((a,b) =>
-      String(a.gage_name || a.gage_id).localeCompare(String(b.gage_name || b.gage_id))
-    );
+    // Preferred dropdown order. Matching uses the gage name returned
+    // by the public service; any additional/unmatched gages appear last.
+    const displayOrder = [
+      "North Prong",
+      "West Prong",
+      "Patterson",
+      "Ranger",
+      "Tarpley",
+      "Bandera",
+      "Lower Mason Creek",
+      "English Crossing",
+      "Medina Lake",
+      "FM 187",
+      "Mill Creek",
+      "Utopia"
+    ];
+
+    function gageDisplayRank(gage) {
+      const name = String(gage.gage_name || gage.gage_id).toLowerCase();
+      const index = displayOrder.findIndex(label =>
+        name.includes(label.toLowerCase())
+      );
+      return index === -1 ? displayOrder.length : index;
+    }
+
+    gages = rows.filter(g => g.gage_id).sort((a,b) => {
+      const rankDifference = gageDisplayRank(a) - gageDisplayRank(b);
+      if (rankDifference !== 0) return rankDifference;
+      return String(a.gage_name || a.gage_id).localeCompare(
+        String(b.gage_name || b.gage_id)
+      );
+    });
     if (!gages.length) throw new Error("The public gage layer returned no stations.");
     const select = $("gageSelect");
     select.innerHTML = "";
@@ -334,14 +368,12 @@
   }
 
   function updateGageDetails(g) {
-    $("gageName").textContent = g.gage_name || "Unnamed stream gage";
     $("chartTitle").textContent = g.gage_name || "Stream Gage";
-    $("gageMeta").textContent = (g.provider || "Provider unavailable") + "  •  " + g.gage_id;
+    $("chartGageId").textContent = "Gage ID: " + (g.gage_id || "Unavailable");
     const unit = g.stage_unit || "";
     $("currentStage").textContent = g.stage === null || g.stage === undefined ? "—" :
       fmtNumber(g.stage) + (unit ? " " + unit : "");
     $("stageTime").textContent = "Observation: " + fmtDate(g.obs_time);
-    $("dataStatus").textContent = g.data_status || "Unavailable";
     const roadStatusText = String(g.road_status || "Not established");
     $("roadStatus").textContent = roadStatusText;
     const roadStatusLower = roadStatusText.toLowerCase();
@@ -362,6 +394,7 @@
     const dataKind = status.includes("current") ? "current" :
                      status.includes("delay") ? "delayed" :
                      status.includes("unavailable") || status.includes("unknown") ? "unavailable" : "";
+    setChip($("headerDataStatus"), g.data_status || "Unavailable", dataKind);
     setChip($("qcChip"), "Quality status: " + (g.qc_status || "Not reported"), "");
     setChip($("providerChip"), "Provider: " + (g.provider || "Not reported"), "");
     $("qcMessage").textContent = [
@@ -371,9 +404,6 @@
       g.qc_timestamp ? "Last quality evaluation: " + fmtDate(g.qc_timestamp) : ""
     ].filter(Boolean).join("  ") || "No additional QA/QC message is available.";
     $("chartUnits").textContent = "Stage (" + (unit || "units not specified") + ")";
-    $("dataStatus").style.color = dataKind === "current" ? "var(--green)" :
-      dataKind === "delayed" ? "var(--amber)" :
-      dataKind === "unavailable" ? "var(--red)" : "var(--navy)";
   }
 
   function renderChart(rows) {
@@ -435,10 +465,8 @@
     out += `<path class="stage-line" d="${path}"/>`;
     out += `<line id="hoverLine" class="hover-line" x1="0" y1="${T}" x2="0" y2="${H-B}" visibility="hidden"/>`;
     out += `<circle id="hoverDot" class="hover-dot" cx="0" cy="0" r="5" visibility="hidden"/>`;
-    out += `<rect id="hitArea" x="${L}" y="${T}" width="${pw}" height="${ph}" fill="transparent" style="cursor:crosshair"/>`;
     svg.innerHTML=out;
     $("pointCount").textContent = rows.length.toLocaleString() + " observations";
-    const hit=svg.querySelector("#hitArea");
     const hoverLine=svg.querySelector("#hoverLine");
     const hoverDot=svg.querySelector("#hoverDot");
     const tooltip=$("tooltip");
@@ -473,26 +501,26 @@
       sliderReadout.textContent = stageText + "  •  " + dateText;
     }
 
+    function hideObservation() {
+      hoverLine.setAttribute("visibility", "hidden");
+      hoverDot.setAttribute("visibility", "hidden");
+      tooltip.style.display = "none";
+    }
+
     slider.disabled = false;
     slider.min = "0";
     slider.max = String(rows.length - 1);
     slider.step = "1";
     slider.value = String(rows.length - 1);
-    showObservation(rows.length - 1);
-    slider.oninput = () => showObservation(slider.value);
+    sliderReadout.textContent = "Drag to inspect observations";
+    hideObservation();
 
-    hit.addEventListener("pointermove", ev=>{
-      const rect=svg.getBoundingClientRect();
-      const svgX=(ev.clientX-rect.left)/rect.width*W;
-      const target=xmin+((svgX-L)/pw)*(xmax-xmin);
-      let lo=0, hi=rows.length-1;
-      while(lo<hi){const mid=(lo+hi)>>1;if(Number(rows[mid].obs_time)<target)lo=mid+1;else hi=mid;}
-      const idx = lo>0 && Math.abs(Number(rows[lo-1].obs_time)-target)<Math.abs(Number(rows[lo].obs_time)-target) ? lo-1 : lo;
-      showObservation(idx);
-    });
-    hit.addEventListener("pointerleave",()=>{
-      // Keep the selected observation visible; the slider remains usable on touch screens.
-    });
+    // Show the chart inspection marker only while the slider is actively used.
+    slider.oninput = () => showObservation(slider.value);
+    slider.addEventListener("pointerup", hideObservation);
+    slider.addEventListener("pointercancel", hideObservation);
+    slider.addEventListener("keyup", hideObservation);
+    slider.addEventListener("blur", hideObservation);
   }
 
   async function refreshSelectedGage() {
