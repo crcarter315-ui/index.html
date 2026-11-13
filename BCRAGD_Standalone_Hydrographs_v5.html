@@ -46,6 +46,8 @@
   .status-chip.current { background:#e8f4ed; color:var(--green); }
   .status-chip.delayed { background:#fff4df; color:var(--amber); }
   .status-chip.unavailable { background:#faeae8; color:var(--red); }
+  .status-chip.pass { background:#e8f4ed; color:var(--green); }
+  .status-chip.review { background:#fff4df; color:#946200; }
   .chart-card { border:1px solid var(--line); border-radius:10px; padding:16px 14px 10px; }
   .range-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0 7px; }
   .range-stat { background:#f6f9fa; border:1px solid #e2e9ed; border-radius:7px; padding:5px 10px; }
@@ -166,7 +168,6 @@
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <button id="thresholdToggle" class="threshold-toggle" type="button" aria-pressed="false" disabled>Threshold unavailable</button>
-            <div class="chart-units" id="chartUnits">Stage (ft)</div>
           </div>
         </div>
         <div class="range-stats" aria-label="Statistics for selected hydrograph period">
@@ -260,15 +261,22 @@
   const REFRESH_MS = 5 * 60 * 1000;
 
   const $ = id => document.getElementById(id);
+  const initialUrlParams = new URLSearchParams(window.location.search);
   let gages = [];
   let selectedGage = null;
-  let periodHours = 24;
+  const requestedPeriod = initialUrlParams.get("period");
+  let periodHours = requestedPeriod === "7d" ? 168 : requestedPeriod === "30d" ? 720 : 24;
   let observations = [];
   let refreshTimer = null;
   let requestInProgress = false;
-  let rainfallShown = false;
+  let rainfallShown = ["1", "true", "yes"].includes(
+    String(initialUrlParams.get("rainfall") || "").toLowerCase()
+  );
   let rainfallRequestId = 0;
-  let thresholdShown = false;
+  // Allow AGOL pop-ups to set the initial gage, period, rainfall panel, and threshold state.
+  let thresholdShown = ["1", "true", "yes"].includes(
+    String(initialUrlParams.get("threshold") || "").toLowerCase()
+  );
 
   function showMessage(text, isError=false) {
     const el = $("message");
@@ -277,6 +285,15 @@
     el.style.display = "block";
   }
   function clearMessage() { $("message").style.display = "none"; }
+
+  function initializeUrlState() {
+    ["btn24", "btn7", "btn30"].forEach(id => $(id).classList.remove("active"));
+    $(periodHours === 24 ? "btn24" : periodHours === 168 ? "btn7" : "btn30").classList.add("active");
+    $("rainCard").hidden = !rainfallShown;
+    $("rainToggle").textContent = rainfallShown ? "Hide Rainfall" : "Show Rainfall";
+    $("rainToggle").setAttribute("aria-expanded", rainfallShown ? "true" : "false");
+  }
+  initializeUrlState();
 
   function fmtDate(value, includeSeconds=false) {
     if (value === null || value === undefined || value === "") return "Unavailable";
@@ -398,6 +415,67 @@
     });
     return rows.filter(r => r.obs_time !== null && r.stage !== null && Number.isFinite(Number(r.stage)))
       .sort((a,b) => Number(a.obs_time) - Number(b.obs_time));
+  }
+
+  // Search the complete observation history for this gage, not just the
+  // current gage-layer summary or the currently selected chart period.
+  // A single matching row is sufficient to identify a historical review flag.
+  async function queryHistoricalQcRecord(gageId, status) {
+    const where = "gage_id = '" + escSql(gageId) + "' AND qc_status = '" + status + "'";
+    const params = new URLSearchParams({
+      f:"json",
+      where,
+      outFields:"OBJECTID,gage_id,obs_time,qc_status,qc_flags,qc_message",
+      returnGeometry:"false",
+      orderByFields:"obs_time DESC, OBJECTID DESC",
+      resultRecordCount:"1"
+    });
+    const response = await fetch(OBS_TABLE + "/query?" + params.toString(), {mode:"cors"});
+    if (!response.ok) throw new Error("ArcGIS QA/QC history request failed (HTTP " + response.status + ").");
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message || "ArcGIS returned a QA/QC history query error.");
+    return (data.features || []).length ? data.features[0].attributes : null;
+  }
+
+  async function loadHistoricalQcStatus(gageId) {
+    // Search the entire observation history. Any Review flag takes precedence.
+    const flaggedRecord = await queryHistoricalQcRecord(gageId, "Review");
+    if (flaggedRecord) return {status:"review", record:flaggedRecord};
+
+    // Unknown means at least one configured check could not be evaluated.
+    const unknownRecord = await queryHistoricalQcRecord(gageId, "Unknown");
+    if (unknownRecord) return {status:"unknown", record:unknownRecord};
+
+    return {status:"pass", record:null};
+  }
+
+  function updateHistoricalQcStatus(result, errorMessage) {
+    if (errorMessage) {
+      setChip($("qcChip"), "QA/QC status unavailable", "");
+      $("qcMessage").textContent = "Unable to check historical QA/QC flags: " + errorMessage;
+      return;
+    }
+    if (result.status === "review") {
+      const record = result.record;
+      setChip($("qcChip"), "🟡 Anomaly Detected — Flagged for Review", "review");
+      $("qcMessage").textContent = [
+        record.qc_message || "A historical observation was flagged by QA/QC.",
+        record.qc_flags ? "Quality flags: " + record.qc_flags : "",
+        record.obs_time ? "Flagged observation: " + fmtDate(record.obs_time) : ""
+      ].filter(Boolean).join("  ");
+      return;
+    }
+    if (result.status === "unknown") {
+      const record = result.record;
+      setChip($("qcChip"), "QA/QC checks incomplete", "");
+      $("qcMessage").textContent = [
+        record.qc_message || "At least one historical measurement could not be evaluated by all configured QA/QC checks.",
+        record.obs_time ? "Observation: " + fmtDate(record.obs_time) : ""
+      ].filter(Boolean).join("  ");
+      return;
+    }
+    setChip($("qcChip"), "✓ All configured QA/QC checks passed", "pass");
+    $("qcMessage").textContent = "All recorded measurements in the observation history passed the configured QA/QC checks; no review flags were found.";
   }
 
   async function loadRainGaugeName(stationId) {
@@ -544,15 +622,7 @@
                      status.includes("delay") ? "delayed" :
                      status.includes("unavailable") || status.includes("unknown") ? "unavailable" : "";
     setChip($("headerDataStatus"), g.data_status || "Unavailable", dataKind);
-    setChip($("qcChip"), "Quality status: " + (g.qc_status || "Not reported"), "");
     setChip($("providerChip"), "Provider: " + (g.provider || "Not reported"), "");
-    $("qcMessage").textContent = [
-      g.qc_message || "",
-      g.qc_flags ? "Quality flags: " + g.qc_flags : "",
-      g.qc_version ? "QA/QC version: " + g.qc_version : "",
-      g.qc_timestamp ? "Last quality evaluation: " + fmtDate(g.qc_timestamp) : ""
-    ].filter(Boolean).join("  ") || "No additional QA/QC message is available.";
-    $("chartUnits").textContent = "Stage (" + (unit || "units not specified") + ")";
   }
 
   function renderChart(rows) {
@@ -700,8 +770,13 @@
         selectedGage=freshGages[0];
         updateGageDetails(selectedGage);
       }
-      const rows=await loadObservations(selectedGage.gage_id,periodHours);
+      const [rows, qcResult] = await Promise.all([
+        loadObservations(selectedGage.gage_id,periodHours),
+        loadHistoricalQcStatus(selectedGage.gage_id).then(result => ({result, error:""}))
+          .catch(err => ({result:null, error:err.message}))
+      ]);
       renderChart(rows);
+      updateHistoricalQcStatus(qcResult.result, qcResult.error);
       if (rainfallShown) await refreshRainfall();
       $("refreshNote").textContent="Last checked " + new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",hour:"numeric",minute:"2-digit"}).format(new Date()) + " CT";
       if (!rows.length) showMessage("No stage observations were returned for this gage and time window. The current gage information may still be available.");
