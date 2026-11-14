@@ -63,8 +63,12 @@
   .stage-line { fill:none; stroke:var(--blue); stroke-width:2.8; stroke-linecap:round; stroke-linejoin:round; }
   .threshold-line { stroke:#c43d36; stroke-width:2.2; stroke-dasharray:9 6; }
   .threshold-label { fill:#a8322c; font-size:11px; font-weight:700; }
+  .bankfull-line { stroke:#c17a16; stroke-width:2.2; stroke-dasharray:3 5; }
+  .bankfull-label { fill:#9a5b08; font-size:11px; font-weight:700; }
   .threshold-toggle { padding:8px 12px; font-size:11px; white-space:nowrap; }
   .threshold-toggle.active { color:#fff; background:#b83b35; border-color:#b83b35; }
+  .bankfull-toggle.active { color:#fff; background:#a96812; border-color:#a96812; }
+  .threshold-toggle:disabled { opacity:.48; cursor:not-allowed; }
   .hover-line { stroke:#6c8797; stroke-width:1; stroke-dasharray:4 4; }
   .hover-dot { fill:var(--blue); stroke:white; stroke-width:2; }
   #tooltip { position:absolute; display:none; pointer-events:none; z-index:2;
@@ -168,6 +172,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <button id="thresholdToggle" class="threshold-toggle" type="button" aria-pressed="false" disabled>Threshold unavailable</button>
+            <button id="bankfullToggle" class="threshold-toggle bankfull-toggle" type="button" aria-label="Show Bank Full Estimate" aria-pressed="false" disabled></button>
           </div>
         </div>
         <div class="range-stats" aria-label="Statistics for selected hydrograph period">
@@ -277,6 +282,7 @@
   let thresholdShown = ["1", "true", "yes"].includes(
     String(initialUrlParams.get("threshold") || "").toLowerCase()
   );
+  let bankfullShown = false;
 
   function showMessage(text, isError=false) {
     const el = $("message");
@@ -619,6 +625,18 @@
       : "Threshold unavailable";
     thresholdButton.classList.toggle("active", hasRoadThreshold && thresholdShown);
     thresholdButton.setAttribute("aria-pressed", hasRoadThreshold && thresholdShown ? "true" : "false");
+
+    const bankfullValue = g.min_bankfull_stage !== null && g.min_bankfull_stage !== undefined &&
+      g.min_bankfull_stage !== "" && Number.isFinite(Number(g.min_bankfull_stage));
+    const bankfullButton = $("bankfullToggle");
+    bankfullButton.disabled = !bankfullValue;
+    bankfullButton.textContent = bankfullValue
+      ? (bankfullShown ? "Hide Bank Full Estimate" : "Show Bank Full Estimate") : "";
+    bankfullButton.classList.toggle("active", bankfullValue && bankfullShown);
+    bankfullButton.setAttribute("aria-pressed", bankfullValue && bankfullShown ? "true" : "false");
+    bankfullButton.setAttribute("aria-label", bankfullValue ?
+      (bankfullShown ? "Hide Bank Full Estimate" : "Show Bank Full Estimate") :
+      "Bank Full Estimate not yet available for this gage");
     const status = String(g.data_status || "").toLowerCase();
     const dataKind = status.includes("current") ? "current" :
                      status.includes("delay") ? "delayed" :
@@ -666,6 +684,13 @@
       ymin = Math.min(ymin, thresholdValue);
       ymax = Math.max(ymax, thresholdValue);
     }
+    const bankfullValue = selectedGage && selectedGage.min_bankfull_stage !== null &&
+      selectedGage.min_bankfull_stage !== undefined && selectedGage.min_bankfull_stage !== "" &&
+      Number.isFinite(Number(selectedGage.min_bankfull_stage)) ? Number(selectedGage.min_bankfull_stage) : null;
+    if (bankfullShown && bankfullValue !== null) {
+      ymin = Math.min(ymin, bankfullValue);
+      ymax = Math.max(ymax, bankfullValue);
+    }
     if (ymin === ymax) { ymin -= 0.5; ymax += 0.5; }
     const pad=(ymax-ymin)*0.12; ymin-=pad; ymax+=pad;
     const x = v => L + ((v-xmin)/(xmax-xmin))*pw;
@@ -693,6 +718,12 @@
       const thresholdUnit = stageUnit || "ft";
       out += `<line class="threshold-line" x1="${L}" y1="${thresholdY}" x2="${W-R}" y2="${thresholdY}"/>`;
       out += `<text class="threshold-label" x="${W-R-4}" y="${Math.max(T+12, thresholdY-7)}" text-anchor="end">Road threshold: ${fmtNumber(thresholdValue)} ${thresholdUnit}</text>`;
+    }
+    if (bankfullShown && bankfullValue !== null) {
+      const bankfullY = y(bankfullValue);
+      const bankfullUnit = stageUnit || "ft";
+      out += `<line class="bankfull-line" x1="${L}" y1="${bankfullY}" x2="${W-R}" y2="${bankfullY}"/>`;
+      out += `<text class="bankfull-label" x="${W-R-4}" y="${Math.max(T+12, bankfullY-7)}" text-anchor="end">Bank Full Estimate: ${fmtNumber(bankfullValue)} ${bankfullUnit}</text>`;
     }
     let path="";
     rows.forEach((r,i)=>{ path+=(i?"L":"M")+x(Number(r.obs_time)).toFixed(2)+","+y(Number(r.stage)).toFixed(2)+" "; });
@@ -798,6 +829,18 @@
     $("thresholdToggle").textContent = thresholdShown ? "Hide Road Threshold" : "Show Road Threshold";
     $("thresholdToggle").classList.toggle("active", thresholdShown);
     $("thresholdToggle").setAttribute("aria-pressed", thresholdShown ? "true" : "false");
+    renderChart(observations);
+  });
+
+  $("bankfullToggle").addEventListener("click", ()=>{
+    if (!selectedGage || selectedGage.min_bankfull_stage === null ||
+        selectedGage.min_bankfull_stage === undefined || selectedGage.min_bankfull_stage === "" ||
+        !Number.isFinite(Number(selectedGage.min_bankfull_stage))) return;
+    bankfullShown = !bankfullShown;
+    $("bankfullToggle").textContent = bankfullShown ? "Hide Bank Full Estimate" : "Show Bank Full Estimate";
+    $("bankfullToggle").classList.toggle("active", bankfullShown);
+    $("bankfullToggle").setAttribute("aria-pressed", bankfullShown ? "true" : "false");
+    $("bankfullToggle").setAttribute("aria-label", bankfullShown ? "Hide Bank Full Estimate" : "Show Bank Full Estimate");
     renderChart(observations);
   });
 
