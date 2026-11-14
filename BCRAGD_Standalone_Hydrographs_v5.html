@@ -172,7 +172,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <button id="thresholdToggle" class="threshold-toggle" type="button" aria-pressed="false" disabled>Threshold unavailable</button>
-            <button id="bankfullToggle" class="threshold-toggle bankfull-toggle" type="button" aria-label="Show Bank Full Estimate" aria-pressed="false" disabled></button>
+            <button id="bankfullToggle" class="threshold-toggle bankfull-toggle" type="button" aria-label="Show Bank Full Estimate" aria-pressed="false" disabled style="display:none"></button>
           </div>
         </div>
         <div class="range-stats" aria-label="Statistics for selected hydrograph period">
@@ -468,7 +468,6 @@
       setChip($("qcChip"), "🟡 Anomaly Detected — Flagged for Review", "review");
       $("qcMessage").textContent = [
         record.qc_message || "An observation in the selected time range was flagged by QA/QC.",
-        record.qc_flags ? "Quality flags: " + record.qc_flags : "",
         record.obs_time ? "Flagged observation: " + fmtDate(record.obs_time) : ""
       ].filter(Boolean).join("  ");
       return;
@@ -629,6 +628,7 @@
     const bankfullValue = g.min_bankfull_stage !== null && g.min_bankfull_stage !== undefined &&
       g.min_bankfull_stage !== "" && Number.isFinite(Number(g.min_bankfull_stage));
     const bankfullButton = $("bankfullToggle");
+    bankfullButton.style.display = bankfullValue ? "" : "none";
     bankfullButton.disabled = !bankfullValue;
     bankfullButton.textContent = bankfullValue
       ? (bankfullShown ? "Hide Bank Full Estimate" : "Show Bank Full Estimate") : "";
