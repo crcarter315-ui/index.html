@@ -9,7 +9,7 @@
     --navy:#17354b; --blue:#247fae; --blue-light:#eaf4f8;
     --ink:#20313d; --muted:#657783; --line:#d9e2e7;
     --paper:#f4f7f8; --white:#fff; --green:#28764b;
-    --amber:#a66a12; --red:#a63e38;
+    --amber:#a66a12; --red:#a63e38; --compare:#8055a5;
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--paper); color:var(--ink);
@@ -36,11 +36,13 @@
   .chart-title-group { display:flex; flex-direction:column; gap:5px; min-width:0; }
   .chart-title-row { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
   .chart-gage-id { color:var(--muted); font-size:11px; }
+  .provider-line { color:var(--muted); font-size:11px; }
   .current-stage-inline { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-top:3px; }
   .current-stage-label { color:var(--muted); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.45px; }
   .current-stage-value { color:var(--navy); font-size:17px; font-weight:700; }
   .current-stage-time { color:var(--muted); font-size:10px; }
-  .status-row { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 18px; }
+  .status-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 8px; }
+  .qc-inline-message { color:var(--muted); font-size:11px; line-height:1.4; }
   .status-chip { display:inline-flex; gap:6px; align-items:center; border-radius:20px;
                  background:#eef2f4; color:#455762; padding:6px 10px; font-size:11px; }
   .status-chip.current { background:#e8f4ed; color:var(--green); }
@@ -61,6 +63,7 @@
   .gridline { stroke:#e6ecef; stroke-width:1; }
   .axis-label { fill:#687985; font-size:11px; }
   .stage-line { fill:none; stroke:var(--blue); stroke-width:2.8; stroke-linecap:round; stroke-linejoin:round; }
+  .comparison-line { fill:none; stroke:var(--compare); stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:7 4; }
   .threshold-line { stroke:#c43d36; stroke-width:2.2; stroke-dasharray:9 6; }
   .threshold-label { fill:#a8322c; font-size:11px; font-weight:700; }
   .bankfull-line { stroke:#c17a16; stroke-width:2.2; stroke-dasharray:3 5; }
@@ -80,7 +83,6 @@
                          gap:10px; flex-wrap:wrap; margin:0 12px 7px; }
   .chart-slider-labels label { margin:0; font-size:9px; letter-spacing:.45px; }
   #sliderReadout { color:var(--navy); font-size:11px; font-weight:700; }
-  /* Align the slider's thumb travel with the plotted data area (SVG x=90 to x=876). */
   #chartSlider { display:block; width:calc(87.333% + 16px); height:28px;
                  margin:0 0 0 calc(10% - 8px); cursor:pointer;
                  accent-color:var(--blue); touch-action:pan-y; }
@@ -91,6 +93,17 @@
   #chartSlider:disabled { opacity:.45; cursor:default; }
   .chart-footer { display:flex; justify-content:space-between; gap:10px; color:var(--muted);
                   font-size:11px; padding:2px 5px 4px; flex-wrap:wrap; }
+  .chart-legend { display:flex; gap:14px; flex-wrap:wrap; align-items:center; padding:7px 5px 2px; color:var(--muted); font-size:11px; }
+  .legend-item { display:inline-flex; align-items:center; gap:6px; }
+  .legend-swatch { width:20px; height:3px; display:inline-block; border-radius:2px; background:var(--blue); }
+  .legend-swatch.compare { height:0; border-top:3px dashed var(--compare); background:transparent; }
+  .compare-controls { display:none; margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:8px; background:#f8fafb; }
+  .compare-controls.open { display:block; }
+  .compare-controls-inner { display:flex; align-items:end; gap:9px; flex-wrap:wrap; }
+  .compare-controls select { min-width:240px; }
+  .compare-note { color:var(--muted); font-size:11px; line-height:1.45; margin-top:8px; }
+  .compare-remove { color:#8b3430; border-color:#e2c4c1; }
+  .qc-section { margin-top:12px; }
   .rain-toggle-row { display:flex; justify-content:flex-end; margin:10px 0 0; }
   .rain-card { margin-top:10px; border:1px solid var(--line); border-radius:10px; padding:16px 14px 10px; }
   .rain-total { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:10px 0 6px; }
@@ -103,7 +116,7 @@
   .rain-bar:hover { fill:#246f99; }
   .rain-note { display:none; padding:8px 10px; margin:8px 0 4px; border-radius:6px; background:#fff4df; color:#79520f; font-size:11px; line-height:1.45; }
   .rain-footer { display:flex; justify-content:space-between; gap:10px; color:var(--muted); font-size:11px; padding:2px 5px 4px; flex-wrap:wrap; }
-  .info-panel { margin-top:15px; border:1px solid var(--line); border-radius:9px; padding:14px 15px; }
+  .info-panel { margin-top:8px; border:1px solid var(--line); border-radius:9px; padding:14px 15px; }
   .info-title { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:8px; }
   .info-text { color:#52636e; font-size:12px; line-height:1.55; }
   .disclaimer { text-align:center; color:#687985; font-size:11px; font-style:italic; margin:18px 0 2px; }
@@ -163,7 +176,7 @@
               <h2 id="chartTitle">Stream Gage</h2>
               <span class="status-chip unavailable" id="headerDataStatus">Unavailable</span>
             </div>
-            <div class="chart-gage-id" id="chartGageId">Gage ID: —</div>
+            <div class="provider-line" id="chartProvider">—</div>
             <div class="current-stage-inline">
               <span class="current-stage-label">Current Water Level</span>
               <span class="current-stage-value" id="currentStage">—</span>
@@ -173,8 +186,24 @@
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <button id="thresholdToggle" class="threshold-toggle" type="button" aria-pressed="false" disabled>Threshold unavailable</button>
             <button id="bankfullToggle" class="threshold-toggle bankfull-toggle" type="button" aria-label="Show Bank Full Estimate" aria-pressed="false" disabled style="display:none"></button>
+            <button id="compareToggle" class="threshold-toggle" type="button" aria-expanded="false">Compare With Another Gage</button>
           </div>
         </div>
+
+        <div class="compare-controls" id="compareControls">
+          <div class="compare-controls-inner">
+            <div>
+              <label for="compareGageSelect">SELECT A COMPARISON GAGE IN THE SAME WATERSHED</label>
+              <select id="compareGageSelect">
+                <option value="">Choose another gage…</option>
+              </select>
+            </div>
+            <button id="addCompareGage" type="button" disabled>Add to Hydrograph</button>
+            <button id="removeCompareGage" class="compare-remove" type="button" style="display:none">Remove Comparison</button>
+          </div>
+          <div class="compare-note" id="compareNote">Choose another stream gage in the same watershed to overlay its observations on this hydrograph. Only one comparison gage can be displayed at a time.</div>
+        </div>
+
         <div class="range-stats" aria-label="Statistics for selected hydrograph period">
           <div class="range-stat">
             <div class="range-stat-label">Minimum</div>
@@ -195,6 +224,10 @@
           </svg>
           <div id="tooltip"></div>
         </div>
+        <div class="chart-legend" id="chartLegend">
+          <span class="legend-item"><span class="legend-swatch"></span><span id="primaryLegendName">Selected gage</span></span>
+          <span class="legend-item" id="comparisonLegend" hidden><span class="legend-swatch compare"></span><span id="comparisonLegendName">Comparison gage</span></span>
+        </div>
         <div class="chart-slider-wrap" id="chartSliderWrap">
           <div class="chart-slider-labels">
             <label for="chartSlider">DRAG TO INSPECT OBSERVATIONS</label>
@@ -207,6 +240,14 @@
           <span>Use the slider to inspect observations</span>
         </div>
       </div>
+
+      <!-- Stream QA/QC belongs directly beneath the hydrograph, not beneath rainfall. -->
+      <section class="qc-section" id="streamQcSection" aria-label="Stream gage quality control">
+        <div class="status-row">
+          <span class="status-chip" id="qcChip">QA/QC status: —</span>
+          <span class="qc-inline-message" id="qcMessage"></span>
+        </div>
+      </section>
 
       <div class="rain-toggle-row">
         <button id="rainToggle" type="button" aria-expanded="false">Show Rainfall</button>
@@ -231,19 +272,14 @@
           <span id="rainPointCount">0 observations</span>
           <span>Bars show individual recorded rainfall observations</span>
         </div>
+        <!-- Rainfall QA/QC is contained in the expandable rainfall card. -->
+        <section class="qc-section" id="rainQcSection" aria-label="Rainfall quality control">
+          <div class="status-row">
+            <span class="status-chip" id="rainQcChip">Rainfall QA/QC status: —</span>
+            <span class="qc-inline-message" id="rainQcMessage"></span>
+          </div>
+        </section>
       </section>
-
-
-      <div class="status-row">
-        <span class="status-chip" id="qcChip">Quality status: —</span>
-        <span class="status-chip" id="providerChip">Provider: —</span>
-      </div>
-
-
-      <div class="info-panel" id="qcPanel">
-        <div class="info-title">Monitoring information</div>
-        <div class="info-text" id="qcMessage">Quality-control information will appear here when available.</div>
-      </div>
     </section>
 
     <div class="disclaimer">This data is considered provisional.</div>
@@ -269,6 +305,8 @@
   const initialUrlParams = new URLSearchParams(window.location.search);
   let gages = [];
   let selectedGage = null;
+  let comparisonGage = null;
+  let comparisonObservations = [];
   const requestedPeriod = initialUrlParams.get("period");
   let periodHours = requestedPeriod === "7d" ? 168 : requestedPeriod === "30d" ? 720 : 24;
   let observations = [];
@@ -278,7 +316,6 @@
     String(initialUrlParams.get("rainfall") || "").toLowerCase()
   );
   let rainfallRequestId = 0;
-  // Allow AGOL pop-ups to set the initial gage, period, rainfall panel, and threshold state.
   let thresholdShown = ["1", "true", "yes"].includes(
     String(initialUrlParams.get("threshold") || "").toLowerCase()
   );
@@ -347,66 +384,73 @@
       returnGeometry:"false",
       orderByFields:"gage_name ASC"
     });
-    // Preferred dropdown order. Matching uses the gage name returned
-    // by the public service; any additional/unmatched gages appear last.
     const displayOrder = [
-      "North Prong",
-      "West Prong",
-      "Patterson",
-      "Ranger",
-      "Tarpley",
-      "Bandera",
-      "Lower Mason Creek",
-      "English Crossing",
-      "Medina Lake",
-      "FM 187",
-      "Mill Creek",
-      "Utopia"
+      "North Prong", "West Prong", "Patterson", "Ranger", "Tarpley",
+      "Bandera", "Lower Mason Creek", "English Crossing", "Medina Lake",
+      "FM 187", "Mill Creek", "Utopia"
     ];
-
     function gageDisplayRank(gage) {
       const name = String(gage.gage_name || gage.gage_id).toLowerCase();
-      const index = displayOrder.findIndex(label =>
-        name.includes(label.toLowerCase())
-      );
+      const index = displayOrder.findIndex(label => name.includes(label.toLowerCase()));
       return index === -1 ? displayOrder.length : index;
     }
-
     gages = rows.filter(g => g.gage_id).sort((a,b) => {
       const rankDifference = gageDisplayRank(a) - gageDisplayRank(b);
       if (rankDifference !== 0) return rankDifference;
-      return String(a.gage_name || a.gage_id).localeCompare(
-        String(b.gage_name || b.gage_id)
-      );
+      return String(a.gage_name || a.gage_id).localeCompare(String(b.gage_name || b.gage_id));
     });
     if (!gages.length) throw new Error("The public gage layer returned no stations.");
     const select = $("gageSelect");
     select.innerHTML = "";
-    gages.forEach((g, i) => {
+    gages.forEach(g => {
       const option = document.createElement("option");
       option.value = g.gage_id;
       option.textContent = (g.gage_name || g.gage_id) + " (" + g.gage_id + ")";
       select.appendChild(option);
     });
-
-    // If the page was opened from a monitoring pop-up, use its gage_id
-    // query parameter instead of defaulting to the first gage in the list.
     const requestedGageId = new URLSearchParams(window.location.search).get("gage_id");
     const requestedGage = requestedGageId
       ? gages.find(g => String(g.gage_id).trim() === requestedGageId.trim())
       : null;
-
     selectedGage = requestedGage || gages[0];
-
     select.disabled = false;
     select.value = String(selectedGage.gage_id);
-
     if (requestedGageId && !requestedGage) {
       showMessage("The requested gage ID (" + requestedGageId + ") was not found in the public gage list. Please select a gage from the dropdown.");
     }
     $("gageContent").hidden = false;
     $("loading").style.display = "none";
+    populateComparisonChoices();
     await refreshSelectedGage();
+  }
+
+  function populateComparisonChoices() {
+    const select = $("compareGageSelect");
+    const addButton = $("addCompareGage");
+    select.innerHTML = '<option value="">Choose another gage…</option>';
+    if (!selectedGage) {
+      addButton.disabled = true;
+      return;
+    }
+    const watershed = selectedGage.watershed;
+    const sameWatershed = gages.filter(g =>
+      String(g.gage_id) !== String(selectedGage.gage_id) &&
+      watershed !== null && watershed !== undefined && String(g.watershed) === String(watershed)
+    );
+    sameWatershed.forEach(g => {
+      const option = document.createElement("option");
+      option.value = g.gage_id;
+      option.textContent = (g.gage_name || g.gage_id) + " (" + g.gage_id + ")";
+      select.appendChild(option);
+    });
+    addButton.disabled = sameWatershed.length === 0;
+    $("compareNote").textContent = sameWatershed.length
+      ? "Choose another stream gage in the same watershed to overlay its observations on this hydrograph. Only one comparison gage can be displayed at a time."
+      : "No other gages with a matching watershed value are available for comparison.";
+    select.disabled = sameWatershed.length === 0;
+    if (comparisonGage && !sameWatershed.some(g => String(g.gage_id) === String(comparisonGage.gage_id))) {
+      clearComparison();
+    }
   }
 
   async function loadObservations(gageId, hours) {
@@ -423,66 +467,57 @@
       .sort((a,b) => Number(a.obs_time) - Number(b.obs_time));
   }
 
-  // Search only the selected chart period for this gage. The QA/QC window
-  // uses the same time boundary as loadObservations(), so older flags do not
-  // carry forward when the user changes the 24-hour, 7-day, or 30-day tab.
-  async function queryHistoricalQcRecord(gageId, status, hours) {
+  async function queryHistoricalQcRecord(tableUrl, idField, idValue, status, hours) {
     const start = new Date(Date.now() - hours * 60 * 60 * 1000);
     const sqlDate = start.toISOString().slice(0,19).replace("T"," ");
-    const where = "gage_id = '" + escSql(gageId) + "' AND qc_status = '" + status + "' AND obs_time >= TIMESTAMP '" + sqlDate + "'";
+    const where = idField + " = " + (idField === "station_id" ? Number(idValue) : "'" + escSql(idValue) + "'") +
+      " AND qc_status = '" + status + "' AND obs_time >= TIMESTAMP '" + sqlDate + "'";
     const params = new URLSearchParams({
-      f:"json",
-      where,
-      outFields:"OBJECTID,gage_id,obs_time,qc_status,qc_flags,qc_message",
+      f:"json", where,
+      outFields:"OBJECTID," + idField + ",obs_time,qc_status,qc_flags,qc_message",
       returnGeometry:"false",
       orderByFields:"obs_time DESC, OBJECTID DESC",
       resultRecordCount:"1"
     });
-    const response = await fetch(OBS_TABLE + "/query?" + params.toString(), {mode:"cors"});
+    const response = await fetch(tableUrl + "/query?" + params.toString(), {mode:"cors"});
     if (!response.ok) throw new Error("ArcGIS QA/QC history request failed (HTTP " + response.status + ").");
     const data = await response.json();
     if (data.error) throw new Error(data.error.message || "ArcGIS returned a QA/QC history query error.");
     return (data.features || []).length ? data.features[0].attributes : null;
   }
 
-  async function loadHistoricalQcStatus(gageId, hours) {
-    // Any Review flag within the selected period takes precedence.
-    const flaggedRecord = await queryHistoricalQcRecord(gageId, "Review", hours);
+  async function loadHistoricalQcStatus(tableUrl, idField, idValue, hours) {
+    const flaggedRecord = await queryHistoricalQcRecord(tableUrl, idField, idValue, "Review", hours);
     if (flaggedRecord) return {status:"review", record:flaggedRecord};
-
-    // Unknown means at least one configured check in this period could not be evaluated.
-    const unknownRecord = await queryHistoricalQcRecord(gageId, "Unknown", hours);
+    const unknownRecord = await queryHistoricalQcRecord(tableUrl, idField, idValue, "Unknown", hours);
     if (unknownRecord) return {status:"unknown", record:unknownRecord};
-
     return {status:"pass", record:null};
   }
 
-  function updateHistoricalQcStatus(result, errorMessage) {
+  function updateHistoricalQcStatus(result, errorMessage, chipId, messageId, label) {
+    const messageEl = $(messageId);
+    messageEl.textContent = "";
     if (errorMessage) {
-      setChip($("qcChip"), "QA/QC status unavailable", "");
-      $("qcMessage").textContent = "Unable to check historical QA/QC flags: " + errorMessage;
+      setChip($(chipId), label + " QA/QC status unavailable", "");
       return;
     }
     if (result.status === "review") {
       const record = result.record;
-      setChip($("qcChip"), "🟡 Anomaly Detected — Flagged for Review", "review");
-      $("qcMessage").textContent = [
-        record.qc_message || "An observation in the selected time range was flagged by QA/QC.",
-        record.obs_time ? "Flagged observation: " + fmtDate(record.obs_time) : ""
-      ].filter(Boolean).join("  ");
+      setChip($(chipId), "🟡 Anomaly Detected — Flagged for Review", "review");
+      messageEl.textContent = record && record.obs_time
+        ? "Flagged observation: " + fmtDate(record.obs_time)
+        : "";
       return;
     }
     if (result.status === "unknown") {
       const record = result.record;
-      setChip($("qcChip"), "QA/QC checks incomplete", "");
-      $("qcMessage").textContent = [
-        record.qc_message || "At least one measurement in the selected time range could not be evaluated by all configured QA/QC checks.",
-        record.obs_time ? "Observation: " + fmtDate(record.obs_time) : ""
-      ].filter(Boolean).join("  ");
+      setChip($(chipId), label + " QA/QC checks incomplete", "");
+      messageEl.textContent = record && record.obs_time
+        ? "Observation: " + fmtDate(record.obs_time)
+        : "";
       return;
     }
-    setChip($("qcChip"), "✓ All configured QA/QC checks passed", "pass");
-    $("qcMessage").textContent = "No review flags or incomplete checks were found in the selected time range.";
+    setChip($(chipId), "✓ All configured QA/QC checks passed", "pass");
   }
 
   async function loadRainGaugeName(stationId) {
@@ -501,7 +536,7 @@
     const where = "station_id = " + Number(stationId) + " AND obs_time >= TIMESTAMP '" + sqlDate + "'";
     const rows = await queryFeatures(RAIN_OBS_TABLE, {
       where,
-      outFields:"OBJECTID,station_id,obs_time,rainfall",
+      outFields:"OBJECTID,station_id,obs_time,rainfall,rain_unit",
       returnGeometry:"false",
       orderByFields:"obs_time ASC, OBJECTID ASC"
     });
@@ -583,15 +618,21 @@
         $("rainTotal").textContent = "—";
         $("rainPointCount").textContent = "0 observations";
         $("rainChart").innerHTML = '<text x="450" y="115" text-anchor="middle" class="axis-label">No associated rain gauge is assigned.</text>';
+        setChip($("rainQcChip"), "Rainfall QA/QC unavailable", "");
+        $("rainQcMessage").textContent = "No associated rain gauge is assigned to this stream gage.";
         return;
       }
-      const [name, rows] = await Promise.all([
+      const [name, rows, qcResult] = await Promise.all([
         loadRainGaugeName(stationId),
-        loadRainfallObservations(stationId, periodHours)
+        loadRainfallObservations(stationId, periodHours),
+        loadHistoricalQcStatus(RAIN_OBS_TABLE, "station_id", stationId, periodHours)
+          .then(result => ({result, error:""}))
+          .catch(err => ({result:null, error:err.message}))
       ]);
       if (requestId !== rainfallRequestId) return;
       $("rainGaugeName").textContent = "Associated rain gauge: " + (name || "Station " + stationId);
       renderRainfallChart(rows, periodHours);
+      updateHistoricalQcStatus(qcResult.result, qcResult.error, "rainQcChip", "rainQcMessage", "Rainfall");
     } catch (err) {
       if (requestId !== rainfallRequestId) return;
       $("rainTotal").textContent = "Unavailable";
@@ -600,6 +641,8 @@
       $("rainChart").innerHTML = '<text x="450" y="115" text-anchor="middle" class="axis-label">Rainfall data could not be loaded.</text>';
       $("rainNote").textContent = "Rainfall request failed: " + err.message;
       $("rainNote").style.display = "block";
+      setChip($("rainQcChip"), "Rainfall QA/QC unavailable", "");
+      $("rainQcMessage").textContent = "Unable to retrieve rainfall QA/QC information: " + err.message;
     }
   }
 
@@ -610,7 +653,7 @@
 
   function updateGageDetails(g) {
     $("chartTitle").textContent = g.gage_name || "Stream Gage";
-    $("chartGageId").textContent = "Gage ID: " + (g.gage_id || "Unavailable");
+    $("chartProvider").textContent = [g.provider, g.gage_id].filter(v => v !== null && v !== undefined && String(v).trim() !== "").join(" ") || "Provider / gage ID not reported";
     const unit = g.stage_unit || "";
     $("currentStage").textContent = g.stage === null || g.stage === undefined ? "—" :
       fmtNumber(g.stage) + (unit ? " " + unit : "");
@@ -642,61 +685,83 @@
                      status.includes("delay") ? "delayed" :
                      status.includes("unavailable") || status.includes("unknown") ? "unavailable" : "";
     setChip($("headerDataStatus"), g.data_status || "Unavailable", dataKind);
-    setChip($("providerChip"), "Provider: " + (g.provider || "Not reported"), "");
+  }
+
+  function nearestObservation(rows, timestamp) {
+    if (!rows.length) return null;
+    let lo = 0, hi = rows.length - 1;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (Number(rows[mid].obs_time) < timestamp) lo = mid + 1;
+      else hi = mid;
+    }
+    const candidate = rows[lo];
+    const previous = lo > 0 ? rows[lo - 1] : null;
+    if (previous && Math.abs(Number(previous.obs_time) - timestamp) <= Math.abs(Number(candidate.obs_time) - timestamp)) {
+      return previous;
+    }
+    return candidate;
   }
 
   function renderChart(rows) {
     observations = rows;
+    const compareRows = comparisonObservations;
     const svg = $("chart");
     const slider = $("chartSlider");
     const sliderReadout = $("sliderReadout");
     const W=900, H=300, L=90, R=24, T=18, B=48;
     const pw=W-L-R, ph=H-T-B;
+    $("primaryLegendName").textContent = selectedGage ? (selectedGage.gage_name || "Selected gage") : "Selected gage";
+    $("comparisonLegend").hidden = !comparisonGage;
+    $("comparisonLegendName").textContent = comparisonGage ? (comparisonGage.gage_name || "Comparison gage") : "Comparison gage";
     if (!rows.length) {
       slider.disabled = true;
-      slider.min = "0";
-      slider.max = "0";
-      slider.value = "0";
+      slider.min = "0"; slider.max = "0"; slider.value = "0";
       sliderReadout.textContent = "No observations to inspect";
-      $("rangeMin").textContent = "—";
-      $("rangeMax").textContent = "—";
-      $("rangeValue").textContent = "—";
-      svg.innerHTML = '<text x="450" y="145" text-anchor="middle" class="axis-label">No stage observations found for this period.</text>';
-      $("pointCount").textContent = "0 observations";
+      $("rangeMin").textContent = "—"; $("rangeMax").textContent = "—"; $("rangeValue").textContent = "—";
+      let emptyText = "No stage observations found for this period.";
+      if (comparisonGage && compareRows.length) emptyText += " Comparison gage observations are available, but the selected gage has no observations.";
+      svg.innerHTML = `<text x="450" y="145" text-anchor="middle" class="axis-label">${emptyText}</text>`;
+      $("pointCount").textContent = "0 selected-gage observations";
       return;
     }
     const xs = rows.map(r => Number(r.obs_time));
     const ys = rows.map(r => Number(r.stage));
+    const compareYs = compareRows.map(r => Number(r.stage)).filter(Number.isFinite);
     const minStage = Math.min(...ys);
     const maxStage = Math.max(...ys);
+    const combinedMin = compareYs.length ? Math.min(minStage, ...compareYs) : minStage;
+    const combinedMax = compareYs.length ? Math.max(maxStage, ...compareYs) : maxStage;
     const stageUnit = rows.find(r => r.stage_unit)?.stage_unit || selectedGage.stage_unit || "";
     const unitSuffix = stageUnit ? " " + stageUnit : "";
-    $("rangeMin").textContent = fmtNumber(minStage) + unitSuffix;
-    $("rangeMax").textContent = fmtNumber(maxStage) + unitSuffix;
-    $("rangeValue").textContent = fmtNumber(maxStage - minStage) + unitSuffix;
+    $("rangeMin").textContent = fmtNumber(combinedMin) + unitSuffix;
+    $("rangeMax").textContent = fmtNumber(combinedMax) + unitSuffix;
+    $("rangeValue").textContent = fmtNumber(combinedMax - combinedMin) + unitSuffix;
     let xmin = Math.min(...xs), xmax = Math.max(...xs);
+    if (compareRows.length) {
+      xmin = Math.min(xmin, ...compareRows.map(r => Number(r.obs_time)));
+      xmax = Math.max(xmax, ...compareRows.map(r => Number(r.obs_time)));
+    }
     if (xmin === xmax) { xmin -= 60000; xmax += 60000; }
-    let ymin = Math.min(...ys), ymax = Math.max(...ys);
+    let ymin = combinedMin, ymax = combinedMax;
     const thresholdValue = selectedGage && selectedGage.road_threshold !== null &&
       selectedGage.road_threshold !== undefined && selectedGage.road_threshold !== "" &&
       Number.isFinite(Number(selectedGage.road_threshold)) ? Number(selectedGage.road_threshold) : null;
     if (thresholdShown && thresholdValue !== null) {
-      ymin = Math.min(ymin, thresholdValue);
-      ymax = Math.max(ymax, thresholdValue);
+      ymin = Math.min(ymin, thresholdValue); ymax = Math.max(ymax, thresholdValue);
     }
     const bankfullValue = selectedGage && selectedGage.min_bankfull_stage !== null &&
       selectedGage.min_bankfull_stage !== undefined && selectedGage.min_bankfull_stage !== "" &&
       Number.isFinite(Number(selectedGage.min_bankfull_stage)) ? Number(selectedGage.min_bankfull_stage) : null;
     if (bankfullShown && bankfullValue !== null) {
-      ymin = Math.min(ymin, bankfullValue);
-      ymax = Math.max(ymax, bankfullValue);
+      ymin = Math.min(ymin, bankfullValue); ymax = Math.max(ymax, bankfullValue);
     }
     if (ymin === ymax) { ymin -= 0.5; ymax += 0.5; }
     const pad=(ymax-ymin)*0.12; ymin-=pad; ymax+=pad;
     const x = v => L + ((v-xmin)/(xmax-xmin))*pw;
     const y = v => T + ((ymax-v)/(ymax-ymin))*ph;
 
-    let out = `<text class="axis-label" x="20" y="${H/2}" text-anchor="middle" transform="rotate(-90 20 ${H/2})" style="font-size:12px;font-weight:700">Gage Height (ft)</text>`;
+    let out = `<text class="axis-label" x="20" y="${H/2}" text-anchor="middle" transform="rotate(-90 20 ${H/2})" style="font-size:12px;font-weight:700">Gage Height (${stageUnit || "ft"})</text>`;
     const yTicks=5;
     for(let i=0;i<=yTicks;i++){
       const val=ymin+(ymax-ymin)*i/yTicks, yy=y(val);
@@ -715,41 +780,69 @@
     }
     if (thresholdShown && thresholdValue !== null) {
       const thresholdY = y(thresholdValue);
-      const thresholdUnit = stageUnit || "ft";
       out += `<line class="threshold-line" x1="${L}" y1="${thresholdY}" x2="${W-R}" y2="${thresholdY}"/>`;
-      out += `<text class="threshold-label" x="${W-R-4}" y="${Math.max(T+12, thresholdY-7)}" text-anchor="end">Road threshold: ${fmtNumber(thresholdValue)} ${thresholdUnit}</text>`;
+      out += `<text class="threshold-label" x="${W-R-4}" y="${Math.max(T+12, thresholdY-7)}" text-anchor="end">Road threshold: ${fmtNumber(thresholdValue)} ${stageUnit || "ft"}</text>`;
     }
     if (bankfullShown && bankfullValue !== null) {
       const bankfullY = y(bankfullValue);
-      const bankfullUnit = stageUnit || "ft";
       out += `<line class="bankfull-line" x1="${L}" y1="${bankfullY}" x2="${W-R}" y2="${bankfullY}"/>`;
-      out += `<text class="bankfull-label" x="${W-R-4}" y="${Math.max(T+12, bankfullY-7)}" text-anchor="end">Bank Full Estimate: ${fmtNumber(bankfullValue)} ${bankfullUnit}</text>`;
+      out += `<text class="bankfull-label" x="${W-R-4}" y="${Math.max(T+12, bankfullY-7)}" text-anchor="end">Bank Full Estimate: ${fmtNumber(bankfullValue)} ${stageUnit || "ft"}</text>`;
     }
     let path="";
     rows.forEach((r,i)=>{ path+=(i?"L":"M")+x(Number(r.obs_time)).toFixed(2)+","+y(Number(r.stage)).toFixed(2)+" "; });
     out += `<path class="stage-line" d="${path}"/>`;
+    if (comparisonGage && compareRows.length) {
+      let comparePath = "";
+      compareRows.forEach((r,i)=>{ comparePath+=(i?"L":"M")+x(Number(r.obs_time)).toFixed(2)+","+y(Number(r.stage)).toFixed(2)+" "; });
+      out += `<path class="comparison-line" d="${comparePath}"/>`;
+    }
     out += `<line id="hoverLine" class="hover-line" x1="0" y1="${T}" x2="0" y2="${H-B}" visibility="hidden"/>`;
     out += `<circle id="hoverDot" class="hover-dot" cx="0" cy="0" r="5" visibility="hidden"/>`;
+    out += `<circle id="compareHoverDot" cx="0" cy="0" r="5" fill="var(--compare)" stroke="white" stroke-width="2" visibility="hidden"/>`;
     svg.innerHTML=out;
-    $("pointCount").textContent = rows.length.toLocaleString() + " observations";
+    $("pointCount").textContent = rows.length.toLocaleString() + " selected-gage observations" +
+      (comparisonGage ? " • " + compareRows.length.toLocaleString() + " comparison observations" : "");
     const hoverLine=svg.querySelector("#hoverLine");
     const hoverDot=svg.querySelector("#hoverDot");
+    const compareHoverDot=svg.querySelector("#compareHoverDot");
     const tooltip=$("tooltip");
+
     function showObservation(idx) {
       idx = Math.max(0, Math.min(rows.length - 1, Number(idx)));
       const r = rows[idx];
-      const xx = x(Number(r.obs_time));
+      const timestamp = Number(r.obs_time);
+      const xx = x(timestamp);
       const yy = y(Number(r.stage));
-      hoverLine.setAttribute("x1",xx);
-      hoverLine.setAttribute("x2",xx);
+      hoverLine.setAttribute("x1",xx); hoverLine.setAttribute("x2",xx);
       hoverLine.setAttribute("visibility","visible");
-      hoverDot.setAttribute("cx",xx);
-      hoverDot.setAttribute("cy",yy);
+      hoverDot.setAttribute("cx",xx); hoverDot.setAttribute("cy",yy);
       hoverDot.setAttribute("visibility","visible");
       const unit = r.stage_unit || selectedGage.stage_unit || "";
       const stageText = fmtNumber(r.stage) + (unit ? " " + unit : "");
       const dateText = fmtDate(r.obs_time);
-      tooltip.innerHTML = "<strong>" + stageText + "</strong><br>" + dateText;
+      const compareRecord = comparisonGage ? nearestObservation(compareRows, timestamp) : null;
+      let compareText = "";
+      if (comparisonGage) {
+        const tolerance = 90 * 60 * 1000;
+        if (compareRecord && Math.abs(Number(compareRecord.obs_time) - timestamp) <= tolerance) {
+          const compareUnit = compareRecord.stage_unit || comparisonGage.stage_unit || "";
+          const compareStageText = fmtNumber(compareRecord.stage) + (compareUnit ? " " + compareUnit : "");
+          compareHoverDot.setAttribute("cx", x(Number(compareRecord.obs_time)));
+          compareHoverDot.setAttribute("cy", y(Number(compareRecord.stage)));
+          compareHoverDot.setAttribute("visibility","visible");
+          compareText = "<br><span style='color:#d5b9ef'>● " +
+            (comparisonGage.gage_name || "Comparison") + ":</span> " + compareStageText +
+            "<br><span style='color:#d5b9ef'>Observation:</span> " + fmtDate(compareRecord.obs_time);
+        } else {
+          compareHoverDot.setAttribute("visibility","hidden");
+          compareText = "<br><span style='color:#d5b9ef'>● " +
+            (comparisonGage.gage_name || "Comparison") + ":</span> No observation near this time";
+        }
+      } else {
+        compareHoverDot.setAttribute("visibility","hidden");
+      }
+      tooltip.innerHTML = "<strong>● " + (selectedGage.gage_name || "Selected gage") + ": " +
+        stageText + "</strong><br>" + dateText + compareText;
       tooltip.style.display = "block";
       const wrapRect = $("chartWrap").getBoundingClientRect();
       const svgRect = svg.getBoundingClientRect();
@@ -757,35 +850,72 @@
       const scaleY = svgRect.height / H;
       let left = (xx * scaleX) + (svgRect.left - wrapRect.left) + 12;
       let top = (yy * scaleY) + (svgRect.top - wrapRect.top) - 48;
-      if (left > wrapRect.width - 180) left -= 190;
+      if (left > wrapRect.width - 260) left -= 270;
       if (left < 4) left = 4;
       if (top < 0) top = 8;
       tooltip.style.left = left + "px";
       tooltip.style.top = top + "px";
       slider.value = String(idx);
-      sliderReadout.textContent = stageText + "  •  " + dateText;
+      sliderReadout.textContent = stageText + "  •  " + dateText +
+        (comparisonGage ? "  •  " + (compareRecord ? fmtNumber(compareRecord.stage) + (compareRecord.stage_unit ? " " + compareRecord.stage_unit : "") : "No comparison observation") : "");
     }
 
     function hideObservation() {
       hoverLine.setAttribute("visibility", "hidden");
       hoverDot.setAttribute("visibility", "hidden");
+      compareHoverDot.setAttribute("visibility", "hidden");
       tooltip.style.display = "none";
     }
 
     slider.disabled = false;
-    slider.min = "0";
-    slider.max = String(rows.length - 1);
-    slider.step = "1";
+    slider.min = "0"; slider.max = String(rows.length - 1); slider.step = "1";
     slider.value = String(rows.length - 1);
     sliderReadout.textContent = "Drag to inspect observations";
     hideObservation();
-
-    // Show the chart inspection marker only while the slider is actively used.
     slider.oninput = () => showObservation(slider.value);
-    slider.addEventListener("pointerup", hideObservation);
-    slider.addEventListener("pointercancel", hideObservation);
-    slider.addEventListener("keyup", hideObservation);
-    slider.addEventListener("blur", hideObservation);
+    slider.onpointerup = hideObservation;
+    slider.onpointercancel = hideObservation;
+    slider.onkeyup = hideObservation;
+    slider.onblur = hideObservation;
+  }
+
+  async function addComparison() {
+    const id = $("compareGageSelect").value;
+    if (!id || !selectedGage) return;
+    const candidate = gages.find(g => String(g.gage_id) === String(id));
+    if (!candidate || String(candidate.watershed) !== String(selectedGage.watershed)) {
+      $("compareNote").textContent = "Please select a gage in the same watershed as the primary gage.";
+      return;
+    }
+    comparisonGage = candidate;
+    $("addCompareGage").disabled = true;
+    $("compareNote").textContent = "Loading comparison observations…";
+    try {
+      comparisonObservations = await loadObservations(comparisonGage.gage_id, periodHours);
+      $("removeCompareGage").style.display = "";
+      $("compareGageSelect").disabled = true;
+      $("compareNote").textContent = comparisonObservations.length
+        ? "Comparing " + (comparisonGage.gage_name || comparisonGage.gage_id) + " with " + (selectedGage.gage_name || selectedGage.gage_id) + ". Both series use the same time axis and chart scale."
+        : "No observations are available for the comparison gage during this period. The comparison can remain selected; change the period or choose another gage.";
+      renderChart(observations);
+    } catch (err) {
+      comparisonGage = null;
+      comparisonObservations = [];
+      $("compareNote").textContent = "Unable to load comparison gage observations: " + err.message;
+      $("addCompareGage").disabled = false;
+      $("compareGageSelect").disabled = false;
+    }
+  }
+
+  function clearComparison() {
+    comparisonGage = null;
+    comparisonObservations = [];
+    $("compareGageSelect").value = "";
+    $("compareGageSelect").disabled = false;
+    $("addCompareGage").disabled = false;
+    $("removeCompareGage").style.display = "none";
+    $("compareNote").textContent = "Choose another stream gage in the same watershed to overlay its observations on this hydrograph. Only one comparison gage can be displayed at a time.";
+    renderChart(observations);
   }
 
   async function refreshSelectedGage() {
@@ -802,14 +932,25 @@
       if (freshGages.length) {
         selectedGage=freshGages[0];
         updateGageDetails(selectedGage);
+        populateComparisonChoices();
       }
-      const [rows, qcResult] = await Promise.all([
+      const tasks = [
         loadObservations(selectedGage.gage_id,periodHours),
-        loadHistoricalQcStatus(selectedGage.gage_id,periodHours).then(result => ({result, error:""}))
-          .catch(err => ({result:null, error:err.message}))
-      ]);
+        loadHistoricalQcStatus(OBS_TABLE, "gage_id", selectedGage.gage_id, periodHours)
+          .then(result => ({result, error:""})).catch(err => ({result:null, error:err.message}))
+      ];
+      if (comparisonGage) {
+        tasks.push(loadObservations(comparisonGage.gage_id, periodHours).catch(err => {
+          $("compareNote").textContent = "Comparison gage data unavailable: " + err.message;
+          return [];
+        }));
+      }
+      const results = await Promise.all(tasks);
+      const rows = results[0];
+      const qcResult = results[1];
+      if (comparisonGage) comparisonObservations = results[2] || [];
       renderChart(rows);
-      updateHistoricalQcStatus(qcResult.result, qcResult.error);
+      updateHistoricalQcStatus(qcResult.result, qcResult.error, "qcChip", "qcMessage", "Stream gage");
       if (rainfallShown) await refreshRainfall();
       $("refreshNote").textContent="Last checked " + new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",hour:"numeric",minute:"2-digit"}).format(new Date()) + " CT";
       if (!rows.length) showMessage("No stage observations were returned for this gage and time window. The current gage information may still be available.");
@@ -844,6 +985,18 @@
     renderChart(observations);
   });
 
+  $("compareToggle").addEventListener("click", ()=>{
+    const isOpen = $("compareControls").classList.toggle("open");
+    $("compareToggle").setAttribute("aria-expanded", isOpen ? "true" : "false");
+    $("compareToggle").textContent = isOpen ? "Close Gage Comparison" : "Compare With Another Gage";
+    if (isOpen) populateComparisonChoices();
+  });
+  $("compareGageSelect").addEventListener("change", ()=>{
+    $("addCompareGage").disabled = !$("compareGageSelect").value || !!comparisonGage;
+  });
+  $("addCompareGage").addEventListener("click", addComparison);
+  $("removeCompareGage").addEventListener("click", clearComparison);
+
   $("rainToggle").addEventListener("click", async ()=>{
     rainfallShown = !rainfallShown;
     $("rainCard").hidden = !rainfallShown;
@@ -854,8 +1007,13 @@
 
   $("gageSelect").addEventListener("change", async ev=>{
     selectedGage=gages.find(g=>g.gage_id===ev.target.value);
-    if(selectedGage) await refreshSelectedGage();
+    if(selectedGage) {
+      if (comparisonGage && String(comparisonGage.watershed) !== String(selectedGage.watershed)) clearComparison();
+      populateComparisonChoices();
+      await refreshSelectedGage();
+    }
   });
+
   async function selectPeriod(hours) {
     periodHours=hours;
     ["btn24","btn7","btn30"].forEach(id => $(id).classList.remove("active"));
