@@ -1,0 +1,2036 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BCRAGD | Rainfall Monitoring</title>
+
+<style>
+:root {
+  --navy:#17354b;
+  --blue:#247fae;
+  --blue-light:#eaf4f8;
+  --ink:#20313d;
+  --muted:#657783;
+  --line:#d9e2e7;
+  --paper:#f4f7f8;
+  --white:#fff;
+  --green:#28764b;
+  --amber:#a66a12;
+  --red:#a63e38;
+  --purple:#8055a5;
+}
+
+* { box-sizing:border-box; }
+
+body {
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:Arial,Helvetica,sans-serif;
+}
+
+.page {
+  max-width:1120px;
+  margin:0 auto;
+  padding:24px 18px 36px;
+}
+
+header {
+  background:var(--navy);
+  color:white;
+  padding:23px 25px;
+  border-radius:12px 12px 0 0;
+  display:flex;
+  align-items:center;
+  gap:18px;
+}
+
+.header-logo {
+  height:72px;
+  width:72px;
+  object-fit:cover;
+  background:white;
+  border-radius:50%;
+  flex-shrink:0;
+}
+
+.eyebrow {
+  font-size:11px;
+  letter-spacing:1.25px;
+  opacity:.82;
+  font-weight:700;
+}
+
+h1 {
+  margin:7px 0 4px;
+  font-size:25px;
+  font-weight:700;
+}
+
+.subtitle {
+  font-size:13px;
+  opacity:.85;
+}
+
+main {
+  background:white;
+  border:1px solid var(--line);
+  border-top:0;
+  border-radius:0 0 12px 12px;
+  padding:22px;
+}
+
+.toolbar {
+  display:flex;
+  align-items:end;
+  gap:14px;
+  flex-wrap:wrap;
+  margin-bottom:18px;
+}
+
+label {
+  display:block;
+  font-size:12px;
+  font-weight:700;
+  color:#536570;
+  margin-bottom:7px;
+}
+
+select,
+input[type="datetime-local"] {
+  min-width:260px;
+  max-width:100%;
+  padding:11px 12px;
+  border:1px solid #bdcbd3;
+  border-radius:7px;
+  background:white;
+  color:var(--ink);
+  font-size:13px;
+}
+
+button {
+  border:1px solid #c7d5dc;
+  background:white;
+  color:var(--navy);
+  padding:10px 15px;
+  border-radius:7px;
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+button.active {
+  color:white;
+  background:var(--blue);
+  border-color:var(--blue);
+}
+
+button:disabled {
+  opacity:.5;
+  cursor:wait;
+}
+
+.periods {
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+}
+
+.spacer { flex:1; }
+
+.refresh-note {
+  font-size:11px;
+  color:var(--muted);
+  padding-bottom:10px;
+}
+
+.custom-controls {
+  display:none;
+  margin:-5px 0 18px;
+  padding:13px;
+  background:#f8fafb;
+  border:1px solid var(--line);
+  border-radius:8px;
+}
+
+.custom-controls.open { display:block; }
+
+.custom-inner {
+  display:flex;
+  align-items:end;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.custom-inner > div { min-width:0; }
+
+.status-chip {
+  display:inline-flex;
+  gap:6px;
+  align-items:center;
+  border-radius:20px;
+  background:#eef2f4;
+  color:#455762;
+  padding:6px 10px;
+  font-size:11px;
+}
+
+.status-chip.current,
+.status-chip.pass {
+  background:#e8f4ed;
+  color:var(--green);
+}
+
+.status-chip.delayed,
+.status-chip.review {
+  background:#fff4df;
+  color:var(--amber);
+}
+
+.status-chip.unavailable {
+  background:#faeae8;
+  color:var(--red);
+}
+
+.chart-card {
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:16px 14px 12px;
+  margin-top:14px;
+}
+
+.chart-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+h2 {
+  margin:0;
+  font-size:16px;
+  color:var(--navy);
+}
+
+.chart-units {
+  color:var(--muted);
+  font-size:11px;
+}
+
+.station-heading {
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+}
+
+.station-title-row {
+  display:flex;
+  align-items:center;
+  gap:9px;
+  flex-wrap:wrap;
+}
+
+.station-provider {
+  color:var(--muted);
+  font-size:11px;
+}
+
+.station-meta {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.rain-summary {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:14px;
+}
+
+.rain-summary-box {
+  background:#f6f9fa;
+  border:1px solid #e2e9ed;
+  border-radius:8px;
+  padding:10px 13px;
+  min-width:0;
+}
+
+.rain-summary-box.week {
+  grid-column:1 / -1;
+}
+
+.rain-summary-label {
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.55px;
+  font-size:10px;
+  font-weight:700;
+}
+
+.rain-summary-value {
+  color:var(--navy);
+  font-size:23px;
+  font-weight:700;
+  margin-top:4px;
+}
+
+.rain-summary-unit {
+  font-size:12px;
+  color:var(--muted);
+  font-weight:400;
+}
+
+.range-stats {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:13px 0 8px;
+}
+
+.range-stat {
+  background:#f6f9fa;
+  border:1px solid #e2e9ed;
+  border-radius:7px;
+  padding:7px 10px;
+}
+
+.range-stat-label {
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.45px;
+  font-size:9px;
+  font-weight:700;
+}
+
+.range-stat-value {
+  color:var(--navy);
+  font-size:16px;
+  font-weight:700;
+  margin-top:3px;
+}
+
+.chart-wrap {
+  position:relative;
+  width:100%;
+  margin-top:8px;
+}
+
+.chart-svg {
+  display:block;
+  width:100%;
+  height:280px;
+  overflow:visible;
+}
+
+.gridline {
+  stroke:#e6ecef;
+  stroke-width:1;
+}
+
+.axis-label {
+  fill:#687985;
+  font-size:11px;
+}
+
+.rain-bar {
+  fill:#4d9ac2;
+  opacity:.9;
+}
+
+.rain-bar:hover {
+  fill:#246f99;
+}
+
+.cumulative-line {
+  fill:none;
+  stroke:var(--purple);
+  stroke-width:2.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.cumulative-dot {
+  fill:var(--purple);
+  stroke:white;
+  stroke-width:1.5;
+}
+
+.chart-legend {
+  display:flex;
+  gap:15px;
+  flex-wrap:wrap;
+  align-items:center;
+  padding:8px 5px 3px;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.legend-item {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.legend-swatch {
+  width:20px;
+  height:3px;
+  display:inline-block;
+  border-radius:2px;
+  background:var(--blue);
+}
+
+.legend-swatch.cumulative {
+  background:var(--purple);
+}
+
+.chart-footer {
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  color:var(--muted);
+  font-size:11px;
+  padding:4px 5px;
+  flex-wrap:wrap;
+}
+
+.chart-tooltip {
+  position:absolute;
+  display:none;
+  pointer-events:none;
+  z-index:3;
+  background:#17354b;
+  color:white;
+  padding:8px 10px;
+  border-radius:6px;
+  font-size:11px;
+  line-height:1.5;
+  box-shadow:0 3px 12px #0002;
+  white-space:nowrap;
+}
+
+.chart-note {
+  display:none;
+  padding:9px 11px;
+  margin:9px 0 4px;
+  border-radius:6px;
+  background:#fff4df;
+  color:#79520f;
+  font-size:11px;
+  line-height:1.5;
+}
+
+.info-panel {
+  margin-top:14px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  padding:14px 15px;
+}
+
+.info-title {
+  font-size:13px;
+  font-weight:700;
+  color:var(--navy);
+  margin-bottom:10px;
+}
+
+.info-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px 18px;
+}
+
+.info-item-label {
+  color:var(--muted);
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+
+.info-item-value {
+  color:var(--ink);
+  font-size:12px;
+  margin-top:4px;
+  overflow-wrap:anywhere;
+}
+
+.qc-section {
+  margin-top:12px;
+  border-top:1px solid #e7ecef;
+  padding-top:11px;
+}
+
+.status-row {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-bottom:5px;
+}
+
+.qc-message {
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.5;
+  overflow-wrap:anywhere;
+}
+
+.message {
+  display:none;
+  padding:12px 14px;
+  margin:12px 0;
+  border-radius:7px;
+  background:#fff4df;
+  color:#79520f;
+  font-size:12px;
+  line-height:1.5;
+}
+
+.message.error {
+  background:#faeae8;
+  color:#87332e;
+}
+
+.loading {
+  color:var(--muted);
+  font-size:13px;
+  padding:25px 5px;
+}
+
+.disclaimer {
+  text-align:center;
+  color:#687985;
+  font-size:11px;
+  font-style:italic;
+  margin:18px 0 2px;
+}
+
+.source {
+  text-align:center;
+  color:#87949c;
+  font-size:10px;
+  margin-top:8px;
+}
+
+@media(max-width:650px) {
+  .page { padding:10px 8px 22px; }
+  header { padding:19px 15px; gap:12px; }
+  .header-logo { width:58px; height:58px; }
+  h1 { font-size:20px; }
+  .eyebrow { font-size:9px; }
+  .subtitle { font-size:11px; }
+  main { padding:15px 12px; }
+  select,
+  input[type="datetime-local"] {
+    width:100%;
+    min-width:0;
+  }
+  .toolbar > div:first-child { width:100%; }
+  .toolbar > div:nth-child(2) { width:100%; }
+  .refresh-note { padding-bottom:0; }
+  .chart-svg { height:250px; }
+  .range-stats { gap:6px; }
+  .range-stat { padding:6px 7px; }
+  .range-stat-value { font-size:14px; }
+  .rain-summary-value { font-size:21px; }
+  .info-grid { gap:12px; }
+}
+</style>
+</head>
+
+<body>
+<div class="page">
+
+<header>
+  <img
+    src="https://bcragd1.maps.arcgis.com/sharing/rest/content/items/ab8c83d2fa3e4425b63dc759ff7227b0/data"
+    alt="Bandera County River Authority and Groundwater District Seal"
+    class="header-logo">
+  <div>
+    <div class="eyebrow">
+      BANDERA COUNTY RIVER AUTHORITY &amp; GROUNDWATER DISTRICT
+    </div>
+    <h1>Rainfall Monitoring</h1>
+    <div class="subtitle">
+      Real-time precipitation monitoring and historical rainfall observations
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <div class="toolbar">
+
+    <div>
+      <label for="stationSelect">SELECT A RAIN GAUGE</label>
+      <select id="stationSelect" disabled>
+        <option>Loading rain gauges…</option>
+      </select>
+    </div>
+
+    <div>
+      <label>CHART PERIOD</label>
+      <div class="periods">
+        <button id="btn24" class="active" type="button">24 Hours</button>
+        <button id="btn7" type="button">7 Days</button>
+        <button id="btn30" type="button">30 Days</button>
+        <button id="btnCustom" type="button">Custom</button>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="refresh-note" id="refreshNote">
+      Connecting to public rainfall data…
+    </div>
+
+  </div>
+
+  <div class="custom-controls" id="customControls">
+    <div class="custom-inner">
+
+      <div>
+        <label for="customStart">START DATE / TIME</label>
+        <input type="datetime-local" id="customStart">
+      </div>
+
+      <div>
+        <label for="customEnd">END DATE / TIME</label>
+        <input type="datetime-local" id="customEnd">
+      </div>
+
+      <button id="applyCustom" type="button" class="active">
+        Apply Custom Range
+      </button>
+
+    </div>
+    <div class="qc-message" style="margin-top:9px">
+      Custom ranges use the historical observations available in the public
+      rainfall observations table.
+    </div>
+  </div>
+
+  <div id="message" class="message"></div>
+
+  <div id="loading" class="loading">
+    Loading public rainfall station information…
+  </div>
+
+  <section id="stationContent" hidden>
+
+    <!-- STATION INFORMATION -->
+
+    <div class="chart-card">
+
+      <div class="chart-head">
+
+        <div class="station-heading">
+
+          <div class="station-title-row">
+            <h2 id="stationName">Rain Gauge</h2>
+            <span class="status-chip unavailable" id="dataStatus">
+              Unavailable
+            </span>
+          </div>
+
+          <div class="station-provider" id="stationProvider">—</div>
+
+          <div class="station-meta">
+            <span id="stationIdentifier">Station ID: —</span>
+            <span id="stationCounty">County: —</span>
+            <span id="observationTime">Observation: —</span>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- CURRENT RAINFALL TOTALS -->
+
+      <div class="rain-summary">
+
+        <div class="rain-summary-box">
+          <div class="rain-summary-label">1 Hour Rainfall</div>
+          <div class="rain-summary-value" id="rain1hr">
+            —
+          </div>
+        </div>
+
+        <div class="rain-summary-box">
+          <div class="rain-summary-label">24 Hour Rainfall</div>
+          <div class="rain-summary-value" id="rain24hr">
+            —
+          </div>
+        </div>
+
+        <div class="rain-summary-box week">
+          <div class="rain-summary-label">7 Day Total</div>
+          <div class="rain-summary-value" id="rain7day">
+            —
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- OBSERVATION STATISTICS -->
+
+    <div class="chart-card">
+
+      <div class="chart-head">
+        <h2>Selected Period Statistics</h2>
+        <span class="chart-units">Rainfall (inches)</span>
+      </div>
+
+      <div class="range-stats">
+
+        <div class="range-stat">
+          <div class="range-stat-label">Total Rainfall</div>
+          <div class="range-stat-value" id="rangeTotal">—</div>
+        </div>
+
+        <div class="range-stat">
+          <div class="range-stat-label">Maximum Interval</div>
+          <div class="range-stat-value" id="rangeMax">—</div>
+        </div>
+
+        <div class="range-stat">
+          <div class="range-stat-label">Observations</div>
+          <div class="range-stat-value" id="rangeCount">—</div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- INDIVIDUAL RAINFALL OBSERVATIONS -->
+
+    <div class="chart-card">
+
+      <div class="chart-head">
+        <h2>Rainfall Observations</h2>
+        <span class="chart-units">Individual observations (inches)</span>
+      </div>
+
+      <div class="chart-wrap">
+        <svg
+          id="rainChart"
+          class="chart-svg"
+          viewBox="0 0 900 280"
+          role="img"
+          aria-label="Individual rainfall observations">
+          <text x="450" y="140" text-anchor="middle" class="axis-label">
+            Waiting for observations…
+          </text>
+        </svg>
+        <div id="rainTooltip" class="chart-tooltip"></div>
+      </div>
+
+      <div class="chart-legend">
+        <span class="legend-item">
+          <span class="legend-swatch"></span>
+          Individual rainfall observation
+        </span>
+      </div>
+
+      <div class="chart-footer">
+        <span id="rainPointCount">0 observations</span>
+        <span>Bars represent individual recorded rainfall amounts</span>
+      </div>
+
+    </div>
+
+    <!-- CUMULATIVE RAINFALL -->
+
+    <div class="chart-card">
+
+      <div class="chart-head">
+        <h2>Cumulative Rainfall</h2>
+        <span class="chart-units">Accumulated precipitation (inches)</span>
+      </div>
+
+      <div class="chart-wrap">
+        <svg
+          id="cumulativeChart"
+          class="chart-svg"
+          viewBox="0 0 900 280"
+          role="img"
+          aria-label="Cumulative rainfall over time">
+          <text x="450" y="140" text-anchor="middle" class="axis-label">
+            Waiting for observations…
+          </text>
+        </svg>
+        <div id="cumulativeTooltip" class="chart-tooltip"></div>
+      </div>
+
+      <div class="chart-legend">
+        <span class="legend-item">
+          <span class="legend-swatch cumulative"></span>
+          Cumulative rainfall
+        </span>
+      </div>
+
+      <div class="chart-footer">
+        <span id="cumulativePointCount">0 observations</span>
+        <span id="cumulativeFinal">Period cumulative total: —</span>
+      </div>
+
+      <div class="chart-note" id="historyNote"></div>
+
+    </div>
+
+    <!-- STATION INFORMATION -->
+
+    <div class="info-panel">
+
+      <div class="info-title">Station Information</div>
+
+      <div class="info-grid">
+
+        <div>
+          <div class="info-item-label">Provider</div>
+          <div class="info-item-value" id="infoProvider">—</div>
+        </div>
+
+        <div>
+          <div class="info-item-label">Sub-watershed</div>
+          <div class="info-item-value" id="infoWatershed">—</div>
+        </div>
+
+        <div>
+          <div class="info-item-label">Display ID</div>
+          <div class="info-item-value" id="infoDisplayId">—</div>
+        </div>
+
+        <div>
+          <div class="info-item-label">Last System Update</div>
+          <div class="info-item-value" id="infoLastUpdate">—</div>
+        </div>
+
+      </div>
+
+      <!-- RAINFALL QA/QC -->
+
+      <section class="qc-section">
+
+        <div class="info-title">Data Quality &amp; QA/QC</div>
+
+        <div class="status-row">
+          <span class="status-chip" id="qcChip">
+            QA/QC status: —
+          </span>
+        </div>
+
+        <div class="qc-message" id="qcFlags"></div>
+        <div class="qc-message" id="qcMessage"></div>
+
+        <div class="qc-message" id="qcTimestamp"
+             style="margin-top:5px"></div>
+
+      </section>
+
+    </div>
+
+  </section>
+
+  <div class="disclaimer">
+    This data is considered provisional.
+  </div>
+
+  <div class="source">
+    Data provided by BCRAGD public rainfall monitoring services.
+  </div>
+
+</main>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+// ============================================================
+// BCRAGD RAINFALL MONITORING
+// STANDALONE PUBLIC HTML APPLICATION
+// ============================================================
+
+// ------------------------------------------------------------
+// ARCGIS PUBLIC SERVICES
+// ------------------------------------------------------------
+
+const SERVICE =
+  "https://services3.arcgis.com/wqgvFuY8FlZhOIIy/arcgis/rest/services/Rain_Gauges_(Public)/FeatureServer";
+
+const STATION_LAYER = SERVICE + "/0";
+const OBS_TABLE = SERVICE + "/1";
+
+// Historical rainfall retention currently approximately 8 days.
+const RAIN_HISTORY_DAYS = 8;
+
+const PAGE_SIZE = 1000;
+const REFRESH_MS = 5 * 60 * 1000;
+
+// Station data freshness threshold.
+const CURRENT_MINUTES = 60;
+
+// ------------------------------------------------------------
+// APPLICATION STATE
+// ------------------------------------------------------------
+
+const $ = id => document.getElementById(id);
+
+let stations = [];
+let selectedStation = null;
+let observations = [];
+
+let periodMode = "24";
+let periodStart = Date.now() - 24 * 3600000;
+let periodEnd = Date.now();
+
+let refreshTimer = null;
+let requestInProgress = false;
+let observationRequestId = 0;
+
+// ------------------------------------------------------------
+// DATE / NUMBER FORMATTING
+// ------------------------------------------------------------
+
+function fmtNumber(value, digits=2) {
+  const n = Number(value);
+
+  return value === null || value === undefined ||
+    value === "" || !Number.isFinite(n)
+    ? "—"
+    : n.toFixed(digits);
+}
+
+function fmtRain(value) {
+  return value === null || value === undefined ||
+    value === "" || !Number.isFinite(Number(value))
+    ? "—"
+    : Number(value).toFixed(2) + ' <span class="rain-summary-unit">in</span>';
+}
+
+function fmtDate(value) {
+  if (value === null || value === undefined || value === "") {
+    return "Unavailable";
+  }
+
+  const d = new Date(Number(value));
+
+  if (isNaN(d.getTime())) return "Unavailable";
+
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone:"America/Chicago",
+    month:"short",
+    day:"numeric",
+    year:"numeric",
+    hour:"numeric",
+    minute:"2-digit"
+  }).format(d) + " CT";
+}
+
+function fmtAxisDate(value) {
+  const d = new Date(Number(value));
+
+  if (periodEnd - periodStart <= 48 * 3600000) {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone:"America/Chicago",
+      hour:"numeric"
+    }).format(d);
+  }
+
+  if (periodEnd - periodStart <= 35 * 86400000) {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone:"America/Chicago",
+      month:"numeric",
+      day:"numeric",
+      hour:"numeric"
+    }).format(d);
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone:"America/Chicago",
+    month:"numeric",
+    day:"numeric"
+  }).format(d);
+}
+
+function localDateTimeValue(date) {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0,16);
+}
+
+function escSql(value) {
+  return String(value).replace(/'/g, "''");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#39;"
+  })[char]);
+}
+
+// ------------------------------------------------------------
+// MESSAGES
+// ------------------------------------------------------------
+
+function showMessage(text, isError=false) {
+  const el = $("message");
+  el.textContent = text;
+  el.className = "message" + (isError ? " error" : "");
+  el.style.display = "block";
+}
+
+function clearMessage() {
+  $("message").style.display = "none";
+}
+
+function setChip(el, text, kind="") {
+  el.textContent = text;
+  el.className = "status-chip" + (kind ? " " + kind : "");
+}
+
+// ------------------------------------------------------------
+// ARCGIS PAGINATED QUERY
+// ------------------------------------------------------------
+
+async function queryFeatures(url, params) {
+
+  const all = [];
+  let offset = 0;
+
+  for (let page = 0; page < 30; page++) {
+
+    const p = new URLSearchParams({
+      f:"json",
+      ...params,
+      resultOffset:String(offset),
+      resultRecordCount:String(PAGE_SIZE)
+    });
+
+    const response = await fetch(
+      url + "/query?" + p.toString(),
+      {mode:"cors"}
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        "ArcGIS request failed (HTTP " + response.status + ")."
+      );
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(
+        data.error.message || "ArcGIS returned a query error."
+      );
+    }
+
+    const features = data.features || [];
+
+    all.push(...features.map(f => f.attributes || {}));
+
+    if (!data.exceededTransferLimit || features.length === 0) {
+      break;
+    }
+
+    offset += features.length;
+  }
+
+  return all;
+}
+
+// ------------------------------------------------------------
+// LOAD STATIONS
+// ------------------------------------------------------------
+
+async function loadStations() {
+
+  const rows = await queryFeatures(STATION_LAYER, {
+    where:"1=1",
+    outFields:"*",
+    returnGeometry:"false",
+    orderByFields:"station_name ASC"
+  });
+
+  stations = rows.filter(s =>
+    s.station_id !== null &&
+    s.station_id !== undefined
+  );
+
+  if (!stations.length) {
+    throw new Error("The public rainfall layer returned no stations.");
+  }
+
+  const select = $("stationSelect");
+  select.innerHTML = "";
+
+  stations.forEach(station => {
+
+    const option = document.createElement("option");
+
+    option.value = String(station.station_id);
+
+    option.textContent =
+      (station.station_name || station.display_id ||
+       "Rain Gauge") +
+      " (" + station.station_id + ")";
+
+    select.appendChild(option);
+  });
+
+  const params = new URLSearchParams(window.location.search);
+
+  const requestedId = params.get("station_id");
+
+  const requested = requestedId
+    ? stations.find(s =>
+        String(s.station_id) === String(requestedId)
+      )
+    : null;
+
+  selectedStation = requested || stations[0];
+
+  select.disabled = false;
+  select.value = String(selectedStation.station_id);
+
+  if (requestedId && !requested) {
+    showMessage(
+      "The requested station ID was not found. " +
+      "Please select a station from the dropdown."
+    );
+  }
+
+  $("stationContent").hidden = false;
+  $("loading").style.display = "none";
+
+  updateStationDetails(selectedStation);
+
+  await refreshSelectedStation();
+}
+
+// ------------------------------------------------------------
+// STATION INFORMATION
+// ------------------------------------------------------------
+
+function updateStationDetails(station) {
+
+  $("stationName").textContent =
+    station.station_name || "Rain Gauge";
+
+  $("stationProvider").textContent =
+    station.Provider || station.provider || "Provider unavailable";
+
+  $("stationIdentifier").textContent =
+    "Station ID: " + (station.station_id ?? "—");
+
+  $("stationCounty").textContent =
+    "County: " + (station.county || "—");
+
+  $("observationTime").textContent =
+    "Observation: " + fmtDate(station.obs_time);
+
+  $("rain1hr").innerHTML = fmtRain(station.rain_1hr);
+  $("rain24hr").innerHTML = fmtRain(station.rain_24hr);
+  $("rain7day").innerHTML = fmtRain(station.rain_7day);
+
+  $("infoProvider").textContent =
+    station.Provider || station.provider || "—";
+
+  $("infoWatershed").textContent =
+    station.sub_watershed || "—";
+
+  $("infoDisplayId").textContent =
+    station.display_id || "—";
+
+  $("infoLastUpdate").textContent =
+    fmtDate(station.last_update);
+
+  // ----------------------------------------------------------
+  // DATA STATUS
+  // ----------------------------------------------------------
+
+  const rawStatus = String(station.data_status || "").trim();
+  const status = rawStatus.toLowerCase();
+
+  let kind = "";
+
+  if (status.includes("current")) {
+    kind = "current";
+  } else if (status.includes("delay")) {
+    kind = "delayed";
+  } else if (
+    status.includes("unavailable") ||
+    status.includes("unknown")
+  ) {
+    kind = "unavailable";
+  } else {
+
+    const obsTime = Number(station.obs_time);
+    const age = Date.now() - obsTime;
+
+    if (!Number.isFinite(obsTime) || obsTime <= 0) {
+      kind = "unavailable";
+    } else if (age <= CURRENT_MINUTES * 60000) {
+      kind = "current";
+    } else if (age <= 24 * 3600000) {
+      kind = "delayed";
+    } else {
+      kind = "unavailable";
+    }
+  }
+
+  setChip(
+    $("dataStatus"),
+    rawStatus || (
+      kind === "current" ? "Current" :
+      kind === "delayed" ? "Delayed" : "Unavailable"
+    ),
+    kind
+  );
+
+  // ----------------------------------------------------------
+  // QA/QC INFORMATION
+  // ----------------------------------------------------------
+
+  const qc = String(station.qc_status || "").trim();
+  const qcLower = qc.toLowerCase();
+
+  let qcKind = "";
+  let qcLabel = qc || "Status unavailable";
+
+  if (
+    qcLower.includes("pass") ||
+    qcLower.includes("normal") ||
+    qcLower === "good" ||
+    qcLower === "clear"
+  ) {
+    qcKind = "pass";
+    qcLabel = "✓ " + qc;
+  } else if (
+    qcLower.includes("review") ||
+    qcLower.includes("flag") ||
+    qcLower.includes("anomal")
+  ) {
+    qcKind = "review";
+    qcLabel = "Review — " + qc;
+  } else if (
+    qcLower.includes("unknown") ||
+    qcLower.includes("incomplete")
+  ) {
+    qcLabel = "QA/QC checks incomplete";
+  }
+
+  setChip($("qcChip"), qcLabel, qcKind);
+
+  $("qcFlags").textContent = station.qc_flags
+    ? "QC Flags: " + station.qc_flags
+    : "";
+
+  $("qcMessage").textContent = station.qc_message
+    ? "QC Message: " + station.qc_message
+    : "";
+
+  $("qcTimestamp").textContent = station.qc_timestamp
+    ? "Last QC check: " + fmtDate(station.qc_timestamp) +
+      (station.qc_version ? " · Version " + station.qc_version : "")
+    : "";
+}
+
+// ------------------------------------------------------------
+// LOAD HISTORICAL RAINFALL OBSERVATIONS
+// ------------------------------------------------------------
+
+async function loadObservations(stationId, start, end) {
+
+  const startDate = new Date(start).toISOString()
+    .slice(0,19).replace("T"," ");
+
+  const endDate = new Date(end).toISOString()
+    .slice(0,19).replace("T"," ");
+
+  const where =
+    "station_id = " + Number(stationId) +
+    " AND obs_time >= TIMESTAMP '" + startDate + "'" +
+    " AND obs_time <= TIMESTAMP '" + endDate + "'";
+
+  const rows = await queryFeatures(OBS_TABLE, {
+
+    where,
+
+    outFields:
+      "OBJECTID,station_id,obs_time,rainfall,rain_unit",
+
+    returnGeometry:"false",
+
+    orderByFields:"obs_time ASC, OBJECTID ASC"
+  });
+
+  return rows.filter(r => {
+
+    const value = Number(r.rainfall);
+
+    return r.obs_time !== null &&
+      r.obs_time !== undefined &&
+      r.rainfall !== null &&
+      r.rainfall !== undefined &&
+      Number.isFinite(value) &&
+      value >= 0;
+
+  }).map(r => {
+
+    let value = Number(r.rainfall);
+
+    const unit = String(r.rain_unit || "inches").toLowerCase();
+
+    if (
+      unit.includes("mm") ||
+      unit.includes("millimeter")
+    ) {
+      value = value / 25.4;
+    } else if (
+      unit.includes("cm") ||
+      unit.includes("centimeter")
+    ) {
+      value = value / 2.54;
+    }
+
+    return {
+      ...r,
+      rainfall_inches:value
+    };
+
+  }).sort((a,b) =>
+    Number(a.obs_time) - Number(b.obs_time) ||
+    Number(a.OBJECTID) - Number(b.OBJECTID)
+  );
+}
+
+// ------------------------------------------------------------
+// PREPARE CUMULATIVE RAINFALL
+// ------------------------------------------------------------
+
+function calculateCumulative(rows) {
+
+  let total = 0;
+
+  return rows.map(row => {
+
+    total += Number(row.rainfall_inches);
+
+    return {
+      ...row,
+      cumulative_rainfall:total
+    };
+
+  });
+}
+
+// ------------------------------------------------------------
+// SHARED SVG CHART HELPERS
+// ------------------------------------------------------------
+
+function chartGrid(options) {
+
+  const {
+    W,H,L,R,T,B,
+    ymax,
+    xmin,xmax,
+    yLabel,
+    start,
+    end
+  } = options;
+
+  const pw = W-L-R;
+  const ph = H-T-B;
+
+  const y = v => T + (1 - Number(v)/ymax) * ph;
+
+  const x = v => L + (Number(v)-xmin)/(xmax-xmin)*pw;
+
+  let out = "";
+
+  for (let i=0; i<=4; i++) {
+
+    const val = ymax*i/4;
+    const yy = y(val);
+
+    out +=
+      `<line class="gridline" x1="${L}" y1="${yy}" ` +
+      `x2="${W-R}" y2="${yy}"/>`;
+
+    out +=
+      `<text class="axis-label" x="${L-10}" ` +
+      `y="${yy+4}" text-anchor="end">${val.toFixed(2)}</text>`;
+  }
+
+  for (let i=0; i<=4; i++) {
+
+    const time = start + (end-start)*i/4;
+    const xx = x(time);
+
+    out +=
+      `<line class="gridline" x1="${xx}" y1="${T}" ` +
+      `x2="${xx}" y2="${H-B}"/>`;
+
+    out +=
+      `<text class="axis-label" x="${xx}" y="${H-15}" ` +
+      `text-anchor="middle">${escapeHtml(fmtAxisDate(time))}</text>`;
+  }
+
+  out +=
+    `<text class="axis-label" x="18" y="${H/2}" ` +
+    `text-anchor="middle" transform="rotate(-90 18 ${H/2})" ` +
+    `style="font-size:11px;font-weight:700">${escapeHtml(yLabel)}</text>`;
+
+  return {out,x,y};
+}
+
+// ------------------------------------------------------------
+// OBSERVATION BAR CHART
+// ------------------------------------------------------------
+
+function renderObservationChart(rows) {
+
+  const svg = $("rainChart");
+
+  const W=900, H=280, L=85, R=24, T=20, B=48;
+
+  const pw=W-L-R;
+  const ph=H-T-B;
+
+  if (!rows.length) {
+
+    svg.innerHTML =
+      '<text x="450" y="140" text-anchor="middle" class="axis-label">' +
+      'No rainfall observations are available for this period.</text>';
+
+    $("rainPointCount").textContent = "0 observations";
+    return;
+  }
+
+  const values = rows.map(r => Number(r.rainfall_inches));
+
+  const maxRain = Math.max(...values, 0);
+
+  const ymax = maxRain > 0
+    ? maxRain * 1.18
+    : 0.10;
+
+  let xmin = periodStart;
+  let xmax = periodEnd;
+
+  if (xmin === xmax) xmax += 60000;
+
+  const grid = chartGrid({
+    W,H,L,R,T,B,ymax,xmin,xmax,
+    start:periodStart,
+    end:periodEnd,
+    yLabel:"Rainfall (in)"
+  });
+
+  let out = grid.out;
+
+  const typicalGap = rows.length > 1
+    ? rows.slice(1).reduce((sum,r,i) =>
+        sum + (
+          Number(r.obs_time) -
+          Number(rows[i].obs_time)
+        ),0) / (rows.length-1)
+    : 3600000;
+
+  const barWidth = Math.max(
+    1.5,
+    Math.min(
+      18,
+      typicalGap/(periodEnd-periodStart)*pw*0.72
+    )
+  );
+
+  rows.forEach(r => {
+
+    const xx = grid.x(r.obs_time);
+    const yy = grid.y(r.rainfall_inches);
+
+    const height = Math.max(0.8, T+ph-yy);
+
+    out +=
+      `<rect class="rain-bar" ` +
+      `x="${(xx-barWidth/2).toFixed(2)}" ` +
+      `y="${yy.toFixed(2)}" ` +
+      `width="${barWidth.toFixed(2)}" ` +
+      `height="${height.toFixed(2)}">` +
+      `<title>${fmtNumber(r.rainfall_inches)} in — ` +
+      `${escapeHtml(fmtDate(r.obs_time))}</title></rect>`;
+  });
+
+  svg.innerHTML = out;
+
+  $("rainPointCount").textContent =
+    rows.length.toLocaleString() + " observations";
+
+  // ----------------------------------------------------------
+  // HOVER TOOLTIP
+  // ----------------------------------------------------------
+
+  svg.querySelectorAll(".rain-bar").forEach((bar,index) => {
+
+    bar.style.cursor = "pointer";
+
+    bar.addEventListener("mouseenter", ev => {
+
+      const row = rows[index];
+
+      showChartTooltip(
+        ev,
+        $("rainTooltip"),
+        "Rainfall: " + fmtNumber(row.rainfall_inches) + " in",
+        fmtDate(row.obs_time)
+      );
+
+    });
+
+    bar.addEventListener("mousemove", ev => {
+      moveChartTooltip(ev,$("rainTooltip"));
+    });
+
+    bar.addEventListener("mouseleave", () => {
+      $("rainTooltip").style.display = "none";
+    });
+
+  });
+}
+
+// ------------------------------------------------------------
+// CUMULATIVE RAINFALL LINE CHART
+// ------------------------------------------------------------
+
+function renderCumulativeChart(rows) {
+
+  const svg = $("cumulativeChart");
+
+  const W=900, H=280, L=85, R=24, T=20, B=48;
+
+  const pw=W-L-R;
+  const ph=H-T-B;
+
+  if (!rows.length) {
+
+    svg.innerHTML =
+      '<text x="450" y="140" text-anchor="middle" class="axis-label">' +
+      'No cumulative rainfall data are available for this period.</text>';
+
+    $("cumulativePointCount").textContent = "0 observations";
+    $("cumulativeFinal").textContent = "Period cumulative total: —";
+
+    return;
+  }
+
+  const cumulativeRows = calculateCumulative(rows);
+
+  const finalTotal =
+    cumulativeRows[cumulativeRows.length-1].cumulative_rainfall;
+
+  const ymax = finalTotal > 0
+    ? finalTotal * 1.15
+    : 0.10;
+
+  let xmin=periodStart;
+  let xmax=periodEnd;
+
+  if (xmin === xmax) xmax += 60000;
+
+  const grid = chartGrid({
+    W,H,L,R,T,B,ymax,xmin,xmax,
+    start:periodStart,
+    end:periodEnd,
+    yLabel:"Cumulative rainfall (in)"
+  });
+
+  let out = grid.out;
+
+  // Start at zero at the beginning of the selected period.
+  let path =
+    "M" + grid.x(periodStart).toFixed(2) +
+    "," + grid.y(0).toFixed(2) + " ";
+
+  cumulativeRows.forEach(row => {
+
+    path +=
+      "L" + grid.x(row.obs_time).toFixed(2) +
+      "," + grid.y(row.cumulative_rainfall).toFixed(2) + " ";
+
+  });
+
+  out += `<path class="cumulative-line" d="${path}"/>`;
+
+  cumulativeRows.forEach(row => {
+
+    const xx = grid.x(row.obs_time);
+    const yy = grid.y(row.cumulative_rainfall);
+
+    out +=
+      `<circle class="cumulative-dot" ` +
+      `cx="${xx.toFixed(2)}" ` +
+      `cy="${yy.toFixed(2)}" r="3.2">` +
+      `<title>Cumulative: ${fmtNumber(row.cumulative_rainfall)} in — ` +
+      `${escapeHtml(fmtDate(row.obs_time))}</title></circle>`;
+  });
+
+  svg.innerHTML = out;
+
+  $("cumulativePointCount").textContent =
+    cumulativeRows.length.toLocaleString() + " observations";
+
+  $("cumulativeFinal").textContent =
+    "Period cumulative total: " + finalTotal.toFixed(2) + " in";
+
+  // ----------------------------------------------------------
+  // HOVER TOOLTIP
+  // ----------------------------------------------------------
+
+  svg.querySelectorAll(".cumulative-dot").forEach((dot,index) => {
+
+    dot.style.cursor = "pointer";
+
+    dot.addEventListener("mouseenter", ev => {
+
+      const row = cumulativeRows[index];
+
+      showChartTooltip(
+        ev,
+        $("cumulativeTooltip"),
+        "Cumulative: " +
+          fmtNumber(row.cumulative_rainfall) + " in",
+        fmtDate(row.obs_time)
+      );
+
+    });
+
+    dot.addEventListener("mousemove", ev => {
+      moveChartTooltip(ev,$("cumulativeTooltip"));
+    });
+
+    dot.addEventListener("mouseleave", () => {
+      $("cumulativeTooltip").style.display = "none";
+    });
+
+  });
+}
+
+// ------------------------------------------------------------
+// TOOLTIP POSITIONING
+// ------------------------------------------------------------
+
+function showChartTooltip(ev,tooltip,title,subtitle) {
+
+  tooltip.innerHTML =
+    "<strong>" + escapeHtml(title) + "</strong><br>" +
+    escapeHtml(subtitle);
+
+  tooltip.style.display = "block";
+
+  moveChartTooltip(ev,tooltip);
+}
+
+function moveChartTooltip(ev,tooltip) {
+
+  const wrap = tooltip.parentElement;
+  const rect = wrap.getBoundingClientRect();
+
+  let left = ev.clientX - rect.left + 12;
+  let top = ev.clientY - rect.top - 45;
+
+  if (left > rect.width - 220) {
+    left -= 230;
+  }
+
+  if (left < 3) left = 3;
+  if (top < 3) top = 3;
+
+  tooltip.style.left = left + "px";
+  tooltip.style.top = top + "px";
+}
+
+// ------------------------------------------------------------
+// PERIOD STATISTICS
+// ------------------------------------------------------------
+
+function updateStatistics(rows) {
+
+  if (!rows.length) {
+
+    $("rangeTotal").textContent = "—";
+    $("rangeMax").textContent = "—";
+    $("rangeCount").textContent = "0";
+
+    return;
+  }
+
+  const total = rows.reduce(
+    (sum,r) => sum + Number(r.rainfall_inches),
+    0
+  );
+
+  const maximum = Math.max(
+    ...rows.map(r => Number(r.rainfall_inches))
+  );
+
+  $("rangeTotal").textContent =
+    total.toFixed(2) + " in";
+
+  $("rangeMax").textContent =
+    maximum.toFixed(2) + " in";
+
+  $("rangeCount").textContent =
+    rows.length.toLocaleString();
+}
+
+// ------------------------------------------------------------
+// HISTORY RETENTION NOTICE
+// ------------------------------------------------------------
+
+function updateHistoryNote() {
+
+  const note = $("historyNote");
+
+  const selectedDays =
+    (periodEnd-periodStart)/86400000;
+
+  if (selectedDays > RAIN_HISTORY_DAYS) {
+
+    note.textContent =
+      "Historical rainfall observations are currently retained " +
+      "for approximately " + RAIN_HISTORY_DAYS +
+      " days. This selected period exceeds the available retention " +
+      "window. The charts and cumulative total therefore reflect " +
+      "only observations still present in the historical table, " +
+      "not a complete record for the entire selected period.";
+
+    note.style.display = "block";
+
+  } else {
+
+    note.textContent = "";
+    note.style.display = "none";
+
+  }
+}
+
+// ------------------------------------------------------------
+// RENDER ALL RAINFALL INFORMATION
+// ------------------------------------------------------------
+
+function renderRainfall(rows) {
+
+  observations = rows;
+
+  updateStatistics(rows);
+
+  renderObservationChart(rows);
+
+  renderCumulativeChart(rows);
+
+  updateHistoryNote();
+}
+
+// ------------------------------------------------------------
+// REFRESH SELECTED STATION
+// ------------------------------------------------------------
+
+async function refreshSelectedStation() {
+
+  if (!selectedStation || requestInProgress) return;
+
+  requestInProgress = true;
+
+  const requestId = ++observationRequestId;
+
+  clearMessage();
+
+  $("refreshNote").textContent = "Updating…";
+
+  try {
+
+    // Refresh the station's current rolling totals and metadata.
+    const freshStations = await queryFeatures(STATION_LAYER, {
+
+      where:
+        "station_id = " + Number(selectedStation.station_id),
+
+      outFields:"*",
+
+      returnGeometry:"false"
+
+    });
+
+    if (freshStations.length) {
+
+      selectedStation = freshStations[0];
+
+      updateStationDetails(selectedStation);
+
+    }
+
+    // Load individual historical rainfall observations.
+    const rows = await loadObservations(
+      selectedStation.station_id,
+      periodStart,
+      periodEnd
+    );
+
+    if (requestId !== observationRequestId) return;
+
+    renderRainfall(rows);
+
+    const checked = new Intl.DateTimeFormat("en-US", {
+      timeZone:"America/Chicago",
+      hour:"numeric",
+      minute:"2-digit"
+    }).format(new Date());
+
+    $("refreshNote").textContent =
+      "Last checked " + checked + " CT";
+
+    if (!rows.length) {
+
+      showMessage(
+        "No rainfall observations were returned for this station " +
+        "and selected time period. Station information may still be available."
+      );
+
+    }
+
+  } catch(err) {
+
+    if (requestId !== observationRequestId) return;
+
+    showMessage(
+      "Unable to retrieve rainfall observations: " +
+      err.message +
+      " Check your internet connection and confirm that the public " +
+      "ArcGIS service permits queries.",
+      true
+    );
+
+    $("refreshNote").textContent = "Update failed";
+
+  } finally {
+
+    requestInProgress = false;
+
+  }
+}
+
+// ------------------------------------------------------------
+// PERIOD SELECTION
+// ------------------------------------------------------------
+
+function setActivePeriodButton(id) {
+
+  ["btn24","btn7","btn30","btnCustom"].forEach(buttonId => {
+    $(buttonId).classList.remove("active");
+  });
+
+  $(id).classList.add("active");
+}
+
+async function selectPeriod(mode) {
+
+  const now = Date.now();
+
+  periodMode = mode;
+  periodEnd = now;
+
+  if (mode === "24") {
+
+    periodStart = now - 24*3600000;
+
+    setActivePeriodButton("btn24");
+
+    $("customControls").classList.remove("open");
+
+  } else if (mode === "7") {
+
+    periodStart = now - 7*86400000;
+
+    setActivePeriodButton("btn7");
+
+    $("customControls").classList.remove("open");
+
+  } else if (mode === "30") {
+
+    periodStart = now - 30*86400000;
+
+    setActivePeriodButton("btn30");
+
+    $("customControls").classList.remove("open");
+
+  }
+
+  await refreshSelectedStation();
+}
+
+// ------------------------------------------------------------
+// CUSTOM DATE RANGE
+// ------------------------------------------------------------
+
+function openCustomRange() {
+
+  setActivePeriodButton("btnCustom");
+
+  $("customControls").classList.add("open");
+
+  if (!$("customStart").value) {
+
+    $("customStart").value =
+      localDateTimeValue(new Date(Date.now()-24*3600000));
+
+  }
+
+  if (!$("customEnd").value) {
+
+    $("customEnd").value =
+      localDateTimeValue(new Date());
+
+  }
+
+}
+
+async function applyCustomRange() {
+
+  const startValue = $("customStart").value;
+  const endValue = $("customEnd").value;
+
+  if (!startValue || !endValue) {
+
+    showMessage(
+      "Please select both a start date and an end date."
+    );
+
+    return;
+  }
+
+  const start = new Date(startValue).getTime();
+  const end = new Date(endValue).getTime();
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+
+    showMessage(
+      "The custom start date must be earlier than the end date."
+    );
+
+    return;
+  }
+
+  if (end > Date.now() + 60000) {
+
+    showMessage(
+      "The custom end date cannot be in the future."
+    );
+
+    return;
+  }
+
+  periodMode = "custom";
+
+  periodStart = start;
+  periodEnd = end;
+
+  setActivePeriodButton("btnCustom");
+
+  $("customControls").classList.add("open");
+
+  await refreshSelectedStation();
+}
+
+// ------------------------------------------------------------
+// EVENT LISTENERS
+// ------------------------------------------------------------
+
+$("stationSelect").addEventListener("change", async ev => {
+
+  const station = stations.find(s =>
+    String(s.station_id) === String(ev.target.value)
+  );
+
+  if (!station) return;
+
+  selectedStation = station;
+
+  updateStationDetails(selectedStation);
+
+  await refreshSelectedStation();
+
+});
+
+$("btn24").addEventListener("click", () => selectPeriod("24"));
+
+$("btn7").addEventListener("click", () => selectPeriod("7"));
+
+$("btn30").addEventListener("click", () => selectPeriod("30"));
+
+$("btnCustom").addEventListener("click", openCustomRange);
+
+$("applyCustom").addEventListener("click", applyCustomRange);
+
+// ------------------------------------------------------------
+// INITIALIZE
+// ------------------------------------------------------------
+
+async function initialize() {
+
+  try {
+
+    await loadStations();
+
+    refreshTimer = setInterval(() => {
+
+      if (selectedStation) {
+        refreshSelectedStation();
+      }
+
+    }, REFRESH_MS);
+
+  } catch(err) {
+
+    $("loading").style.display = "none";
+
+    showMessage(
+      "Could not load the public rainfall station list: " +
+      err.message +
+      " This may be caused by a network connection or browser " +
+      "cross-origin restriction.",
+      true
+    );
+
+    $("stationSelect").disabled = true;
+
+    $("stationSelect").innerHTML =
+      "<option>Unable to load stations</option>";
+
+  }
+
+}
+
+initialize();
+
+})();
+</script>
+
+</body>
+</html>
