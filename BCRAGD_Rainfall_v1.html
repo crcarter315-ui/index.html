@@ -348,26 +348,21 @@ h2 {
   fill:#246f99;
 }
 
-/* CUMULATIVE RAINFALL AREA AND LINE */
+/* CUMULATIVE RAINFALL
+   DARKER BLUE STEP LINE + LIGHT BLUE AREA */
 
 .cumulative-area {
   fill:#247fae;
-  fill-opacity:.20;
+  fill-opacity:.18;
   stroke:none;
 }
 
 .cumulative-line {
   fill:none;
-  stroke:#247fae;
+  stroke:#17618c;
   stroke-width:3;
   stroke-linecap:round;
   stroke-linejoin:round;
-}
-
-.cumulative-dot {
-  fill:#247fae;
-  stroke:white;
-  stroke-width:1.5;
 }
 
 .chart-legend {
@@ -1525,7 +1520,8 @@ function renderObservationChart(rows) {
 
 // ------------------------------------------------------------
 // CUMULATIVE RAINFALL CHART
-// SOLID BLUE LINE WITH FILLED AREA TO ZERO
+// STEP-STYLE LINE WITH LIGHT BLUE FILLED AREA
+// NO DATA-POINT MARKERS
 // ------------------------------------------------------------
 
 function renderCumulativeChart(rows) {
@@ -1547,6 +1543,7 @@ function renderCumulativeChart(rows) {
     return;
   }
 
+  // Calculate running total in chronological order.
   const cumulativeRows = calculateCumulative(rows);
 
   const finalTotal =
@@ -1570,46 +1567,64 @@ function renderCumulativeChart(rows) {
 
   let out = grid.out;
 
-  // Build the cumulative line, beginning at zero.
-  let linePath =
-    "M" + grid.x(periodStart).toFixed(2) +
-    "," + grid.y(0).toFixed(2) + " ";
+  const baselineY = grid.y(0);
+  const startX = grid.x(periodStart);
+  const endX = grid.x(periodEnd);
 
+  // Start at zero at the beginning of the selected period.
+  let linePath =
+    "M" + startX.toFixed(2) +
+    "," + baselineY.toFixed(2);
+
+  let previousTotal = 0;
+
+  // Draw horizontal sections between observations and vertical
+  // increases when rainfall is recorded. This keeps the cumulative
+  // line flat when the accumulated rainfall has not changed.
   cumulativeRows.forEach(row => {
 
+    const currentX = grid.x(row.obs_time);
+    const currentTotal = row.cumulative_rainfall;
+    const currentY = grid.y(currentTotal);
+
+    // First move horizontally to the observation time.
     linePath +=
-      "L" + grid.x(row.obs_time).toFixed(2) +
-      "," + grid.y(row.cumulative_rainfall).toFixed(2) + " ";
+      " H" + currentX.toFixed(2);
+
+    // Then move vertically to the updated cumulative total.
+    if (currentTotal !== previousTotal) {
+
+      linePath +=
+        " V" + currentY.toFixed(2);
+
+    }
+
+    previousTotal = currentTotal;
 
   });
 
-  // Close the area path along the zero-rainfall baseline.
-  const lastRow = cumulativeRows[cumulativeRows.length-1];
+  // Extend the final cumulative value horizontally to the end
+  // of the selected period.
+  linePath += " H" + endX.toFixed(2);
 
+  // Build a closed area beneath the step line.
   const areaPath =
     linePath +
-    "L" + grid.x(lastRow.obs_time).toFixed(2) +
-    "," + grid.y(0).toFixed(2) +
+    " L" + endX.toFixed(2) +
+    "," + baselineY.toFixed(2) +
+    " L" + startX.toFixed(2) +
+    "," + baselineY.toFixed(2) +
     " Z";
 
-  // Draw the filled area first, then the blue line over it.
-  out += `<path class="cumulative-area" d="${areaPath}"/>`;
+  // Draw the filled area first so the line remains visible above it.
+  out +=
+    `<path class="cumulative-area" d="${areaPath}"/>`;
 
-  out += `<path class="cumulative-line" d="${linePath}"/>`;
+  out +=
+    `<path class="cumulative-line" d="${linePath}"/>`;
 
-  // Observation points remain interactive.
-  cumulativeRows.forEach(row => {
-
-    const xx = grid.x(row.obs_time);
-    const yy = grid.y(row.cumulative_rainfall);
-
-    out +=
-      `<circle class="cumulative-dot" ` +
-      `cx="${xx.toFixed(2)}" ` +
-      `cy="${yy.toFixed(2)}" r="3.2">` +
-      `<title>Cumulative: ${fmtNumber(row.cumulative_rainfall)} in — ` +
-      `${escapeHtml(fmtDate(row.obs_time))}</title></circle>`;
-  });
+  // No circles or data-point markers are drawn.
+  // The cumulative series is represented by one clean continuous line.
 
   svg.innerHTML = out;
 
@@ -1619,33 +1634,7 @@ function renderCumulativeChart(rows) {
   $("cumulativeFinal").textContent =
     "Period cumulative total: " + finalTotal.toFixed(2) + " in";
 
-  svg.querySelectorAll(".cumulative-dot").forEach((dot,index) => {
-
-    dot.style.cursor = "pointer";
-
-    dot.addEventListener("mouseenter", ev => {
-
-      const row = cumulativeRows[index];
-
-      showChartTooltip(
-        ev,
-        $("cumulativeTooltip"),
-        "Cumulative: " +
-          fmtNumber(row.cumulative_rainfall) + " in",
-        fmtDate(row.obs_time)
-      );
-
-    });
-
-    dot.addEventListener("mousemove", ev => {
-      moveChartTooltip(ev,$("cumulativeTooltip"));
-    });
-
-    dot.addEventListener("mouseleave", () => {
-      $("cumulativeTooltip").style.display = "none";
-    });
-
-  });
+  $("cumulativeTooltip").style.display = "none";
 }
 
 // ------------------------------------------------------------
