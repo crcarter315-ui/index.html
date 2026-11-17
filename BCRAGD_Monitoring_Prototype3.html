@@ -22,7 +22,7 @@
     --panel: #ffffff;
     --header-h: 54px;
     --footer-h: 28px;
-    --sidebar-w: 330px;
+    --sidebar-w: 390px;
     font-family: "Avenir Next", Avenir, "Segoe UI", Arial, sans-serif;
     color: var(--ink);
   }
@@ -345,13 +345,13 @@
   .notice.show { display: block; }
 
   @media (max-width: 900px) {
-    :root { --sidebar-w: 300px; }
+    :root { --sidebar-w: 355px; }
     .brand-title { min-width: 100px; }
     .nav-button { min-width: 150px; padding: 8px 11px; font-size: 13px; }
   }
 
   @media (max-width: 650px) {
-    :root { --header-h: 94px; --footer-h: 25px; --sidebar-w: min(88vw, 330px); }
+    :root { --header-h: 94px; --footer-h: 25px; --sidebar-w: min(88vw, 390px); }
     .topbar { flex-wrap: wrap; align-content: center; gap: 4px 9px; padding: 5px 9px; }
     .brand-logo { width: 35px; height: 35px; }
     .brand-title { font-size: 12px; min-width: 0; }
@@ -385,14 +385,13 @@
 
   <main class="workspace">
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-heading" id="sidebarLabel">STREAM MONITORING</div>
       <div class="feature-panel">
         <div class="feature-empty" id="emptyState">
           <div class="symbol">⌖</div>
           <strong>Select a map feature</strong>
           <span>Click a gage or another selectable feature on the map. Its configured ArcGIS pop-up will appear here.</span>
         </div>
-        <arcgis-features id="featurePanel" reference-element="mainMap" initial-display-mode="feature"></arcgis-features>
+        <arcgis-features id="featurePanel" reference-element="mainMap" initial-display-mode="feature" hide-heading hide-close-button hide-action-bar hide-feature-navigation></arcgis-features>
       </div>
     </aside>
 
@@ -404,7 +403,7 @@
         <arcgis-compass slot="top-left"></arcgis-compass>
       </arcgis-map>
       <section class="map-legend" id="mapLegendBox" aria-label="Stream gage legend">
-        <div class="map-legend-heading">Stream Gages</div>
+        <div class="map-legend-heading">Map Legend</div>
         <arcgis-legend id="streamLegend" reference-element="mainMap" legend-style="classic"></arcgis-legend>
       </section>
       <div class="map-status" id="mapStatus">Loading monitoring map…</div>
@@ -431,9 +430,6 @@
 <div class="notice" id="notice" role="status"></div>
 
 <script type="module">
-  await $arcgis.import("@arcgis/map-components/components/arcgis-features");
-  await $arcgis.import("@arcgis/map-components/components/arcgis-legend");
-
   const STREAM_MAP_ID = "02a828a8dcd146aeae5e7f90bb809f38";
   const RAIN_MAP_ID = "70fba0270fdd49bd8d0d4a6a380f0459";
   const BANDERA_USGS_GAGE_ID = "08178880";
@@ -449,7 +445,6 @@
   let activeMap = "stream";
   let loadSequence = 0;
   let noticeTimer;
-  let viewClickHandle = null;
 
   function showNotice(message) {
     notice.textContent = message;
@@ -494,22 +489,26 @@
 
   async function findStreamGageLayer(webmap) {
     const layers = getFeatureLayers(webmap);
-    // Prefer a clearly named stream-gage layer.
-    for (const layer of layers) {
-      if (/stream.*gage|gage.*stream/i.test(layer.title || "")) {
-        await layer.load();
-        return layer;
-      }
+
+    // Use the known Stream Gages layer ID first; title matching is a fallback.
+    let layer = layers.find(candidate => candidate.id === "1a198017d5b-layer-80");
+    if (!layer) {
+      layer = layers.find(candidate => /stream.*gage|gage.*stream/i.test(candidate.title || ""));
     }
-    // Otherwise identify the layer by its gage identifier field.
-    for (const layer of layers) {
+    if (layer) {
+      await layer.load();
+      return layer;
+    }
+
+    // Final fallback: identify a layer by the known gage_id field.
+    for (const candidate of layers) {
       try {
-        await layer.load();
-        if ((layer.fields || []).some(f => ["gage_id", "site_no", "station_id"].includes((f.name || "").toLowerCase()))) {
-          return layer;
+        await candidate.load();
+        if ((candidate.fields || []).some(field => (field.name || "").toLowerCase() === "gage_id")) {
+          return candidate;
         }
       } catch (e) {
-        console.warn("Unable to inspect layer schema:", layer.title, e);
+        console.warn("Unable to inspect layer schema:", candidate.title, e);
       }
     }
     return null;
@@ -518,92 +517,92 @@
   async function selectBanderaGage(webmap) {
     const layer = await findStreamGageLayer(webmap);
     if (!layer) {
-      console.error("Bandera default selection: no stream gage feature layer identified.", getFeatureLayers(webmap).map(l => l.title));
-      showNotice("Could not identify the Stream Gages layer. See browser console (F12).");
-      return;
-    }
-
-    const idField = (layer.fields || []).find(f => ["gage_id", "site_no", "station_id"].includes((f.name || "").toLowerCase()));
-    if (!idField) {
-      console.error("Gage layer has no recognized gage ID field:", layer.title, layer.fields);
-      showNotice("The gage ID field was not found. See browser console (F12).");
+      console.error("Bandera default selection: Stream Gages layer was not found.", getFeatureLayers(webmap).map(l => ({ id: l.id, title: l.title })));
+      showNotice("The Stream Gages layer could not be identified.");
       return;
     }
 
     try {
-      const isString = /string/i.test(idField.type || "");
-      const value = isString ? `'${BANDERA_USGS_GAGE_ID}'` : BANDERA_USGS_GAGE_ID;
-      const q = layer.createQuery();
-      q.where = `${idField.name} = ${value}`;
-      q.outFields = ["*"];
-      q.returnGeometry = true;
-      q.num = 5;
-      const result = await layer.queryFeatures(q);
-      const gage = result.features?.[0];
+      // The Bandera gage was confirmed as ObjectID 1 in the Stream Gages layer.
+      // Selecting by ObjectID avoids the earlier false failure caused by trying
+      // to discover/interpret the gage identifier field at startup.
+      const objectId = 1;
+      const result = await layer.queryFeatures({
+        objectIds: [objectId],
+        outFields: ["*"],
+        returnGeometry: true
+      });
+      let gage = result.features?.[0];
+
+      // Fallback to the known gage_id value if the service's object IDs change.
+      if (!gage) {
+        const idField = (layer.fields || []).find(field => (field.name || "").toLowerCase() === "gage_id");
+        if (idField) {
+          const q = layer.createQuery();
+          q.where = `${idField.name} = '${BANDERA_USGS_GAGE_ID}'`;
+          q.outFields = ["*"];
+          q.returnGeometry = true;
+          q.num = 5;
+          const fallback = await layer.queryFeatures(q);
+          gage = fallback.features?.[0];
+        }
+      }
 
       if (!gage) {
-        console.error("Bandera gage not found in selected layer.", {
+        console.error("Bandera gage was not found by ObjectID 1 or gage_id 08178880.", {
           layerTitle: layer.title,
+          layerId: layer.id,
           layerUrl: layer.url,
-          idField: idField.name,
-          idFieldType: idField.type,
-          searchedId: BANDERA_USGS_GAGE_ID
+          objectIdField: layer.objectIdField,
+          fields: (layer.fields || []).map(field => field.name)
         });
-        showNotice("Bandera gage 08178880 was not found. Please share the console details.");
+        showNotice("The Bandera gage could not be located in the Stream Gages layer.");
         return;
       }
 
       if (!gage.popupTemplate && layer.popupTemplate) gage.popupTemplate = layer.popupTemplate;
       if (!showSelectedGraphics([gage])) {
-        console.error("Bandera gage found, but no popupTemplate is configured on the layer.", layer.title, layer.popupTemplate);
-        showNotice("Bandera gage found, but its pop-up template is missing.");
+        console.error("Bandera gage was found, but the layer has no configured pop-up template.", layer.title, layer.popupTemplate);
+        showNotice("Bandera gage found, but its configured pop-up is unavailable.");
       }
     } catch (e) {
-      console.error("Bandera gage query failed:", e);
-      showNotice("Bandera gage query failed. See browser console (F12).");
+      console.error("Bandera default selection failed:", e);
+      showNotice("The Bandera gage could not be selected. See browser console (F12).");
     }
   }
 
   async function configureStreamLegend(webmap, mode) {
-    if (mode !== "stream") {
-      legendBox.hidden = true;
-      legend.layerInfos = [];
-      return;
-    }
-    const layer = await findStreamGageLayer(webmap);
-    if (!layer) {
-      legendBox.hidden = true;
-      console.error("Cannot build stream-only legend: stream gage layer not identified.");
-      return;
-    }
+    // Use the standard map-linked legend. It automatically reflects the
+    // operational layers in whichever web map is currently active.
+    legend.referenceElement = mapElement;
     legend.view = mapElement.view;
-    // Explicit layerInfos list containing exactly one layer excludes all other map layers.
-    legend.layerInfos = [{ layer, title: "" }];
     legend.basemapLegendVisible = false;
-    legend.ignoreLayerVisibility = true;
-    legend.hideLayersNotInCurrentView = false;
     legendBox.hidden = false;
   }
 
-  async function handleViewClick(event) {
+  async function handleMapComponentClick(event) {
     try {
       const view = mapElement.view;
       if (!view) return;
-      const hit = await view.hitTest(event);
-      const graphics = (hit.results || [])
-        .filter(item => item.type === "graphic" && item.graphic)
-        .map(item => item.graphic)
-        .filter(graphic => {
-          const layer = graphic.layer;
-          if (!graphic.popupTemplate && layer?.popupTemplate) graphic.popupTemplate = layer.popupTemplate;
-          return Boolean(graphic.popupTemplate) && layer?.popupEnabled !== false;
-        });
-      if (!showSelectedGraphics(graphics)) {
-        // Clicking empty map space leaves the current selected feature visible.
-        console.debug("No pop-up-enabled feature at click location.");
+
+      // arcgisViewClick.detail is the ScreenPoint itself (x/y), not
+      // an object containing a nested screenPoint property.
+      const screenPoint = event.detail;
+      if (!screenPoint || !Number.isFinite(screenPoint.x) || !Number.isFinite(screenPoint.y)) {
+        console.warn("Map click did not include a valid screen point:", event.detail);
+        return;
       }
+
+      // In SDK 5.1 this returns a Promise for an AsyncGenerator.
+      const featureGenerator = await view.fetchPopupFeatures(screenPoint);
+      const features = [];
+      for await (const feature of featureGenerator) {
+        if (feature) features.push(feature);
+      }
+
+      if (features.length) showSelectedGraphics(features);
     } catch (e) {
-      console.error("MapView hitTest selection failed:", e);
+      console.error("ArcGIS popup-feature selection failed:", e);
       showNotice("Feature selection failed. See browser console (F12).");
     }
   }
@@ -612,7 +611,6 @@
     const thisLoad = ++loadSequence;
     setLoading(mode === "stream" ? "Loading Stream Monitoring…" : "Loading Rainfall Monitoring…");
     clearFeatureSelection();
-    if (viewClickHandle) { viewClickHandle.remove(); viewClickHandle = null; }
 
     try {
       const WebMap = await $arcgis.import("@arcgis/core/WebMap.js");
@@ -629,8 +627,6 @@
       featurePanel.view = mapElement.view;
       featurePanel.map = webmap;
 
-      // Listen on the actual MapView, not on a wrapper method that is not part of its API.
-      viewClickHandle = mapElement.view.on("click", handleViewClick);
 
       const savedViewpoint = webmap.initialViewProperties?.viewpoint;
       if (savedViewpoint) {
@@ -642,7 +638,6 @@
       activeMap = mode;
       document.getElementById("streamBtn").classList.toggle("active", mode === "stream");
       document.getElementById("rainBtn").classList.toggle("active", mode === "rain");
-      document.getElementById("sidebarLabel").textContent = mode === "stream" ? "STREAM MONITORING" : "RAINFALL MONITORING";
       document.getElementById("footerMessage").textContent = mode === "stream" ? "Stream Monitoring · Data are provisional" : "Rainfall Monitoring · Data are provisional";
       clearLoading();
 
@@ -654,6 +649,8 @@
     }
   }
 
+  // Attach page controls before any ArcGIS component import is awaited.
+  // This prevents an SDK import failure from disabling the rest of the UI.
   document.getElementById("streamBtn").addEventListener("click", () => {
     if (activeMap !== "stream") loadMap(STREAM_MAP_ID, "stream");
   });
@@ -678,8 +675,19 @@
     showNotice(button.dataset.tool + " controls will be configured in the toolbox development stage.");
   }));
   document.getElementById("weatherBtn").addEventListener("click", () => showNotice("Weather station integration will be connected in a later stage."));
+  mapElement.addEventListener("arcgisViewClick", handleMapComponentClick);
 
-  loadMap(STREAM_MAP_ID, "stream");
+  // The ordinary controls are now active. Initialize ArcGIS separately.
+  try {
+    await $arcgis.import("@arcgis/map-components/components/arcgis-map");
+    await $arcgis.import("@arcgis/map-components/components/arcgis-features");
+    await $arcgis.import("@arcgis/map-components/components/arcgis-legend");
+    await loadMap(STREAM_MAP_ID, "stream");
+  } catch (e) {
+    console.error("ArcGIS initialization failed:", e);
+    setLoading("ArcGIS components could not be initialized");
+    showNotice("The page controls are available, but the map could not initialize. See browser console (F12).");
+  }
 </script>
 </body>
 </html>
