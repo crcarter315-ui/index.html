@@ -49,6 +49,33 @@
   button:disabled { opacity:.5; cursor:wait; }
   .periods { display:flex; gap:7px; }
   .spacer { flex:1; }
+  .custom-range-toolbar { display:flex; align-items:end; gap:9px; flex-wrap:wrap; margin:0 0 14px; }
+  .custom-range-toolbar[hidden] { display:none !important; }
+  .export-menu { position:relative; display:flex; justify-content:flex-end; margin:0 0 14px; }
+  .export-menu > summary { list-style:none; cursor:pointer; display:inline-block; border:1px solid #c7d5dc; background:#fff; color:var(--navy); padding:5px 8px; border-radius:6px; font-size:10px; line-height:1.2; font-weight:700; }
+  .export-menu > summary::-webkit-details-marker { display:none; }
+  .export-menu[open] > summary { background:var(--blue-light); border-color:var(--blue); }
+  .export-menu-options { position:absolute; z-index:20; right:0; top:calc(100% + 6px); min-width:205px; display:grid; gap:5px; padding:8px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px #17354b20; }
+  .export-menu-options button { width:100%; text-align:left; font-size:11px; padding:9px 11px; }
+  .export-menu-options .report-button { background:#fff; border-color:#c7d5dc; color:var(--navy); }
+  .legend-item[hidden] { display:none !important; }
+  .custom-range-toolbar input { min-width:150px; padding:10px 9px; border:1px solid #bdcbd3; border-radius:7px; color:var(--ink); font:13px Arial, sans-serif; }
+  .custom-range-toolbar label { margin-bottom:6px; }
+  .range-help { color:var(--muted); font-size:11px; padding:0 0 10px 3px; }
+  .legend-swatch.flood-action { height:10px; background:rgba(255,255,0,.38); border:1px solid #c5b900; }
+  .legend-swatch.flood-minor { height:10px; background:rgba(255,165,0,.30); border:1px solid #d88a00; }
+  .legend-swatch.flood-moderate { height:10px; background:rgba(255,0,0,.22); border:1px solid #d22; }
+  .legend-swatch.flood-major { height:10px; background:rgba(128,0,128,.20); border:1px solid #8055a5; }
+  .legend-swatch.threshold { height:0; background:transparent; border-top:2px dashed #c43d36; }
+  .legend-swatch.bankfull { height:0; background:transparent; border-top:2px dotted #c17a16; }
+  .flood-band { stroke:none; }
+  @media(max-width:650px) {
+    .custom-range-toolbar > div { flex:1 1 42%; }
+    .custom-range-toolbar input { width:100%; min-width:0; }
+    .range-help { width:100%; padding:0; }
+    .export-menu { justify-content:flex-start; }
+    .export-menu-options { left:0; right:auto; }
+  }
   .refresh-note { font-size:11px; color:var(--muted); padding-bottom:10px; }
   .chart-title-group { display:flex; flex-direction:column; gap:5px; min-width:0; }
   .chart-title-row { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
@@ -92,8 +119,9 @@
   .hover-line { stroke:#6c8797; stroke-width:1; stroke-dasharray:4 4; }
   .hover-dot { fill:var(--blue); stroke:white; stroke-width:2; }
   #tooltip { position:absolute; display:none; pointer-events:none; z-index:2;
-             background:#17354b; color:white; padding:8px 10px; border-radius:6px;
-             font-size:11px; line-height:1.5; box-shadow:0 3px 12px #0002; white-space:nowrap; }
+             top:10px; right:10px; left:auto; max-width:min(310px, calc(100% - 20px));
+             white-space:normal; background:#17354b; color:white; padding:8px 10px;
+             border-radius:6px; font-size:11px; line-height:1.5; box-shadow:0 3px 12px #0002; }
   .chart-slider-wrap { margin:10px 0 8px; padding:10px 0 8px;
                        background:#f6f9fa; border:1px solid #e2e9ed; border-radius:8px; }
   .chart-slider-labels { display:flex; justify-content:space-between; align-items:center;
@@ -137,6 +165,7 @@
   .info-title { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:8px; }
   .info-text { color:#52636e; font-size:12px; line-height:1.55; }
   .disclaimer { text-align:center; color:#687985; font-size:11px; font-style:italic; margin:18px 0 2px; }
+  @media(max-width:650px) { .custom-range-toolbar button { flex:1 1 auto; } }
   .source { text-align:center; color:#87949c; font-size:10px; margin-top:8px; }
   .message { display:none; padding:12px 14px; margin:12px 0; border-radius:7px;
              background:#fff4df; color:#79520f; font-size:12px; line-height:1.5; }
@@ -180,10 +209,36 @@
           <button id="btn24" class="active" type="button">24 Hours</button>
           <button id="btn7" type="button">7 Days</button>
           <button id="btn30" type="button">30 Days</button>
+          <button id="customRangeToggle" type="button" aria-expanded="false">Custom</button>
         </div>
       </div>
       <div class="spacer"></div>
       <div class="refresh-note" id="refreshNote">Connecting to public monitoring data…</div>
+    </div>
+
+    <div class="custom-range-toolbar" id="customRangePanel" aria-label="Custom hydrograph date range" hidden>
+      <div>
+        <label for="rangeStart">START DATE</label>
+        <input type="date" id="rangeStart">
+      </div>
+      <div>
+        <label for="rangeEnd">END DATE</label>
+        <input type="date" id="rangeEnd">
+      </div>
+      <button id="applyDateRange" type="button">Load Custom Range</button>
+      <button id="clearDateRange" type="button">Cancel</button>
+      <span class="range-help">Choose any date range up to 1 year. Dates use Central Time.</span>
+    </div>
+
+    <div class="export-menu-wrap">
+      <details class="export-menu" id="exportMenu">
+        <summary aria-label="Open export options">Export ▾</summary>
+        <div class="export-menu-options" aria-label="Export options">
+          <button id="exportPng" type="button">Hydrograph PNG</button>
+          <button id="exportCsv" type="button">Observation CSV</button>
+          <button id="exportReport" type="button" class="report-button">BCRAGD Summary Report</button>
+        </div>
+      </details>
     </div>
 
     <div id="message" class="message"></div>
@@ -208,6 +263,7 @@
             <button id="thresholdToggle" class="threshold-toggle" type="button" aria-pressed="false" disabled>Threshold unavailable</button>
             <button id="bankfullToggle" class="threshold-toggle bankfull-toggle" type="button" aria-label="Show Bank Full Estimate" aria-pressed="false" disabled style="display:none"></button>
             <button id="compareToggle" class="threshold-toggle" type="button" aria-expanded="false">Compare With Another Gage</button>
+            <button id="floodStagesToggle" class="threshold-toggle" type="button" aria-pressed="false" hidden>Show Flood Stages</button>
           </div>
         </div>
 
@@ -248,6 +304,12 @@
         <div class="chart-legend" id="chartLegend">
           <span class="legend-item"><span class="legend-swatch"></span><span id="primaryLegendName">Selected gage</span></span>
           <span class="legend-item" id="comparisonLegend" hidden><span class="legend-swatch compare"></span><span id="comparisonLegendName">Comparison gage</span></span>
+          <span class="legend-item" id="thresholdLegend" hidden><span class="legend-swatch threshold"></span><span id="thresholdLegendName">Road Threshold</span></span>
+          <span class="legend-item" id="bankfullLegend" hidden><span class="legend-swatch bankfull"></span><span>Bank Full Estimate</span></span>
+          <span class="legend-item" id="actionLegend" hidden><span class="legend-swatch flood-action"></span><span>Action</span></span>
+          <span class="legend-item" id="minorLegend" hidden><span class="legend-swatch flood-minor"></span><span>Minor Flooding</span></span>
+          <span class="legend-item" id="moderateLegend" hidden><span class="legend-swatch flood-moderate"></span><span>Moderate Flooding</span></span>
+          <span class="legend-item" id="majorLegend" hidden><span class="legend-swatch flood-major"></span><span>Major Flooding</span></span>
         </div>
         <div class="chart-slider-wrap" id="chartSliderWrap">
           <div class="chart-slider-labels">
@@ -330,6 +392,9 @@
   let comparisonObservations = [];
   const requestedPeriod = initialUrlParams.get("period");
   let periodHours = requestedPeriod === "7d" ? 168 : requestedPeriod === "30d" ? 720 : 24;
+  let customRange = false;
+  let customStartDate = "";
+  let customEndDate = "";
   let observations = [];
   let refreshTimer = null;
   let requestInProgress = false;
@@ -341,6 +406,7 @@
     String(initialUrlParams.get("threshold") || "").toLowerCase()
   );
   let bankfullShown = false;
+  let floodStagesShown = false;
 
   function showMessage(text, isError=false) {
     const el = $("message");
@@ -351,7 +417,7 @@
   function clearMessage() { $("message").style.display = "none"; }
 
   function initializeUrlState() {
-    ["btn24", "btn7", "btn30"].forEach(id => $(id).classList.remove("active"));
+    ["btn24", "btn7", "btn30", "customRangeToggle"].forEach(id => $(id).classList.remove("active"));
     $(periodHours === 24 ? "btn24" : periodHours === 168 ? "btn7" : "btn30").classList.add("active");
     $("rainCard").hidden = !rainfallShown;
     $("rainToggle").textContent = rainfallShown ? "Hide Rainfall" : "Show Rainfall";
@@ -380,7 +446,7 @@
   async function queryFeatures(url, params) {
     const all = [];
     let offset = 0;
-    for (let page = 0; page < 30; page++) {
+    for (let page = 0; page < 150; page++) {
       const p = new URLSearchParams({
         f:"json", ...params,
         resultOffset:String(offset),
@@ -474,10 +540,21 @@
     }
   }
 
-  async function loadObservations(gageId, hours) {
-    const start = new Date(Date.now() - hours * 60 * 60 * 1000);
-    const sqlDate = start.toISOString().slice(0,19).replace("T"," ");
-    const where = "gage_id = '" + escSql(gageId) + "' AND obs_time >= TIMESTAMP '" + sqlDate + "'";
+  async function loadObservations(gageId, hours, dateRange=null) {
+    let dateClause = "";
+    if (dateRange && dateRange.start && dateRange.end) {
+      const start = new Date(dateRange.start + "T00:00:00");
+      const endExclusive = new Date(dateRange.end + "T00:00:00");
+      endExclusive.setDate(endExclusive.getDate() + 1);
+      const startSql = start.toISOString().slice(0,19).replace("T"," ");
+      const endSql = endExclusive.toISOString().slice(0,19).replace("T"," ");
+      dateClause = " AND obs_time >= TIMESTAMP '" + startSql + "' AND obs_time < TIMESTAMP '" + endSql + "'";
+    } else {
+      const start = new Date(Date.now() - hours * 60 * 60 * 1000);
+      const sqlDate = start.toISOString().slice(0,19).replace("T"," ");
+      dateClause = " AND obs_time >= TIMESTAMP '" + sqlDate + "'";
+    }
+    const where = "gage_id = '" + escSql(gageId) + "'" + dateClause;
     const rows = await queryFeatures(OBS_TABLE, {
       where,
       outFields:"OBJECTID,gage_id,gage_name,provider,obs_time,stage,stage_unit,qc_status,qc_flags,qc_message,qc_timestamp,qc_version",
@@ -682,10 +759,13 @@
     const hasRoadThreshold = g.road_threshold !== null && g.road_threshold !== undefined &&
       g.road_threshold !== "" && Number.isFinite(Number(g.road_threshold));
     const thresholdButton = $("thresholdToggle");
+    const isMedinaLake = String(g.gage_name || "").toLowerCase().includes("medina lake");
+    const thresholdLabel = isMedinaLake ? "Spillway" : "Road Threshold";
     thresholdButton.disabled = !hasRoadThreshold;
     thresholdButton.textContent = hasRoadThreshold
-      ? (thresholdShown ? "Hide Road Threshold" : "Show Road Threshold")
-      : "Threshold unavailable";
+      ? (thresholdShown ? "Hide " + thresholdLabel : "Show " + thresholdLabel)
+      : thresholdLabel + " unavailable";
+    $("thresholdLegendName").textContent = thresholdLabel;
     thresholdButton.classList.toggle("active", hasRoadThreshold && thresholdShown);
     thresholdButton.setAttribute("aria-pressed", hasRoadThreshold && thresholdShown ? "true" : "false");
 
@@ -701,6 +781,15 @@
     bankfullButton.setAttribute("aria-label", bankfullValue ?
       (bankfullShown ? "Hide Bank Full Estimate" : "Show Bank Full Estimate") :
       "Bank Full Estimate not yet available for this gage");
+    const isBanderaGage = String(g.gage_name || "").toLowerCase().includes("bandera") &&
+      ["action_level","minor_flooding","moderate_flooding","major_flooding"].some(field =>
+        g[field] !== null && g[field] !== undefined && g[field] !== "" && Number.isFinite(Number(g[field])));
+    const floodButton = $("floodStagesToggle");
+    floodButton.hidden = !isBanderaGage;
+    if (!isBanderaGage) floodStagesShown = false;
+    floodButton.textContent = floodStagesShown ? "Hide Flood Stages" : "Show Flood Stages";
+    floodButton.classList.toggle("active", isBanderaGage && floodStagesShown);
+    floodButton.setAttribute("aria-pressed", isBanderaGage && floodStagesShown ? "true" : "false");
     const status = String(g.data_status || "").toLowerCase();
     const dataKind = status.includes("current") ? "current" :
                      status.includes("delay") ? "delayed" :
@@ -724,6 +813,37 @@
     return candidate;
   }
 
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    })[ch]);
+  }
+
+  // One source of truth for the on-screen, PNG, and report legends.
+  function getVisibleLegendItems() {
+    return Array.from($("chartLegend").querySelectorAll(".legend-item"))
+      .filter(item => !item.hidden && getComputedStyle(item).display !== "none")
+      .map(item => {
+        const swatch = item.querySelector(".legend-swatch");
+        const label = item.querySelectorAll("span")[1]?.textContent?.trim() || "";
+        let color = "#247fae", line = "solid";
+        if (swatch?.classList.contains("compare")) { color = "#8055a5"; line = "dashed"; }
+        else if (swatch?.classList.contains("threshold")) { color = "#c43d36"; line = "dashed"; }
+        else if (swatch?.classList.contains("bankfull")) { color = "#c17a16"; line = "dotted"; }
+        else if (swatch?.classList.contains("flood-action")) { color = "#c5b900"; line = "fill"; }
+        else if (swatch?.classList.contains("flood-minor")) { color = "#d88a00"; line = "fill"; }
+        else if (swatch?.classList.contains("flood-moderate")) { color = "#d22"; line = "fill"; }
+        else if (swatch?.classList.contains("flood-major")) { color = "#8055a5"; line = "fill"; }
+        return {label, color, line};
+      }).filter(item => item.label);
+  }
+
+  function legendHtml(items) {
+    return `<div class="export-legend">${items.map(item =>
+      `<span class="export-legend-item"><i class="export-legend-swatch ${item.line}" style="--legend-color:${item.color}"></i>${escapeHtml(item.label)}</span>`
+    ).join("")}</div>`;
+  }
+
   function renderChart(rows) {
     observations = rows;
     const compareRows = comparisonObservations;
@@ -733,8 +853,42 @@
     const W=900, H=300, L=90, R=24, T=18, B=48;
     const pw=W-L-R, ph=H-T-B;
     $("primaryLegendName").textContent = selectedGage ? (selectedGage.gage_name || "Selected gage") : "Selected gage";
-    $("comparisonLegend").hidden = !comparisonGage;
+    $("comparisonLegend").hidden = !(comparisonGage && compareRows.length);
     $("comparisonLegendName").textContent = comparisonGage ? (comparisonGage.gage_name || "Comparison gage") : "Comparison gage";
+    $("chartLegend").style.display = rows.length ? "flex" : "none";
+    const gageNameLower = String(selectedGage && selectedGage.gage_name || "").toLowerCase();
+    const isBanderaGage = gageNameLower.includes("bandera");
+    const floodFields = [
+      ["action_level","actionLegend"],["minor_flooding","minorLegend"],
+      ["moderate_flooding","moderateLegend"],["major_flooding","majorLegend"]
+    ];
+    const floodValuesValid = selectedGage && ["action_level","minor_flooding","moderate_flooding","major_flooding"]
+      .every(field => selectedGage[field] !== null && selectedGage[field] !== undefined &&
+        selectedGage[field] !== "" && Number.isFinite(Number(selectedGage[field]))) &&
+      Number(selectedGage.action_level) < Number(selectedGage.minor_flooding) &&
+      Number(selectedGage.minor_flooding) < Number(selectedGage.moderate_flooding) &&
+      Number(selectedGage.moderate_flooding) < Number(selectedGage.major_flooding);
+    const legendUnit = selectedGage?.stage_unit || "ft";
+    const floodLabels = [
+      ["Action Level","action_level"],["Minor Flooding","minor_flooding"],
+      ["Moderate Flooding","moderate_flooding"],["Major Flooding","major_flooding"]
+    ];
+    floodFields.forEach(([field,legendId], index) => {
+      const value = selectedGage ? Number(selectedGage[field]) : NaN;
+      const visible = !!(rows.length && isBanderaGage && floodStagesShown && floodValuesValid &&
+        selectedGage[field] !== null && selectedGage[field] !== undefined &&
+        selectedGage[field] !== "" && Number.isFinite(value));
+      $(legendId).hidden = !visible;
+      if (visible) $(legendId).querySelectorAll("span")[1].textContent =
+        `${floodLabels[index][0]}: ${fmtNumber(value)} ${legendUnit}`;
+    });
+    const hasThreshold = selectedGage && selectedGage.road_threshold !== null &&
+      selectedGage.road_threshold !== undefined && selectedGage.road_threshold !== "" &&
+      Number.isFinite(Number(selectedGage.road_threshold));
+    $("thresholdLegend").hidden = !(rows.length && hasThreshold && thresholdShown);
+    $("bankfullLegend").hidden = !(rows.length && bankfullShown && selectedGage &&
+      selectedGage.min_bankfull_stage !== null && selectedGage.min_bankfull_stage !== undefined &&
+      selectedGage.min_bankfull_stage !== "" && Number.isFinite(Number(selectedGage.min_bankfull_stage)));
     if (!rows.length) {
       slider.disabled = true;
       slider.min = "0"; slider.max = "0"; slider.value = "0";
@@ -777,6 +931,14 @@
     if (bankfullShown && bankfullValue !== null) {
       ymin = Math.min(ymin, bankfullValue); ymax = Math.max(ymax, bankfullValue);
     }
+    const floodStages = (isBanderaGage && floodStagesShown) ? [
+      selectedGage.action_level, selectedGage.minor_flooding,
+      selectedGage.moderate_flooding, selectedGage.major_flooding
+    ].filter(v => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v))).map(Number) : [];
+    if (floodStages.length) {
+      ymin = Math.min(ymin, ...floodStages);
+      ymax = Math.max(ymax, ...floodStages);
+    }
     if (ymin === ymax) { ymin -= 0.5; ymax += 0.5; }
     const pad=(ymax-ymin)*0.12; ymin-=pad; ymax+=pad;
     const x = v => L + ((v-xmin)/(xmax-xmin))*pw;
@@ -793,16 +955,40 @@
     for(let i=0;i<=xTicks;i++){
       const val=xmin+(xmax-xmin)*i/xTicks, xx=x(val);
       const d=new Date(val);
-      const label=periodHours===24
+      const label=(!customRange && periodHours===24)
         ? new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",hour:"numeric"}).format(d)
         : new Intl.DateTimeFormat("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric"}).format(d);
       out += `<line class="gridline" x1="${xx}" y1="${T}" x2="${xx}" y2="${H-B}"/>`;
       out += `<text class="axis-label" x="${xx}" y="${H-19}" text-anchor="middle">${label}</text>`;
     }
+    if (isBanderaGage && floodStagesShown) {
+      const action = Number(selectedGage.action_level);
+      const minor = Number(selectedGage.minor_flooding);
+      const moderate = Number(selectedGage.moderate_flooding);
+      const major = Number(selectedGage.major_flooding);
+      const valid = ["action_level","minor_flooding","moderate_flooding","major_flooding"]
+        .every(field => selectedGage[field] !== null && selectedGage[field] !== undefined &&
+          selectedGage[field] !== "" && Number.isFinite(Number(selectedGage[field]))) &&
+        action < minor && minor < moderate && moderate < major;
+      if (valid) {
+        const bands = [
+          {low:action,high:minor,color:"#ffff00",opacity:".19"},
+          {low:minor,high:moderate,color:"#ffa500",opacity:".16"},
+          {low:moderate,high:major,color:"#ff0000",opacity:".13"},
+          {low:major,high:ymax,color:"#800080",opacity:".12"}
+        ];
+        bands.forEach(b => {
+          const top = Math.max(T, y(b.high));
+          const bottom = Math.min(H-B, y(b.low));
+          if (bottom > top) out += `<rect class="flood-band" x="${L}" y="${top}" width="${pw}" height="${bottom-top}" fill="${b.color}" fill-opacity="${b.opacity}"/>`;
+        });
+      }
+    }
     if (thresholdShown && thresholdValue !== null) {
       const thresholdY = y(thresholdValue);
       out += `<line class="threshold-line" x1="${L}" y1="${thresholdY}" x2="${W-R}" y2="${thresholdY}"/>`;
-      out += `<text class="threshold-label" x="${W-R-4}" y="${Math.max(T+12, thresholdY-7)}" text-anchor="end">Road threshold: ${fmtNumber(thresholdValue)} ${stageUnit || "ft"}</text>`;
+      const thresholdText = isBanderaGage && String(selectedGage.gage_name || "").toLowerCase().includes("medina lake") ? "Spillway" : "Road threshold";
+      out += `<text class="threshold-label" x="${W-R-4}" y="${Math.max(T+12, thresholdY-7)}" text-anchor="end">${thresholdText}: ${fmtNumber(thresholdValue)} ${stageUnit || "ft"}</text>`;
     }
     if (bankfullShown && bankfullValue !== null) {
       const bankfullY = y(bankfullValue);
@@ -822,7 +1008,8 @@
     out += `<circle id="compareHoverDot" cx="0" cy="0" r="5" fill="var(--compare)" stroke="white" stroke-width="2" visibility="hidden"/>`;
     svg.innerHTML=out;
     $("pointCount").textContent = rows.length.toLocaleString() + " selected-gage observations" +
-      (comparisonGage ? " • " + compareRows.length.toLocaleString() + " comparison observations" : "");
+      (comparisonGage ? " • " + compareRows.length.toLocaleString() + " comparison observations" : "") +
+      (customRange ? " • Custom date range" : "");
     const hoverLine=svg.querySelector("#hoverLine");
     const hoverDot=svg.querySelector("#hoverDot");
     const compareHoverDot=svg.querySelector("#compareHoverDot");
@@ -865,17 +1052,9 @@
       tooltip.innerHTML = "<strong>● " + (selectedGage.gage_name || "Selected gage") + ": " +
         stageText + "</strong><br>" + dateText + compareText;
       tooltip.style.display = "block";
-      const wrapRect = $("chartWrap").getBoundingClientRect();
-      const svgRect = svg.getBoundingClientRect();
-      const scaleX = svgRect.width / W;
-      const scaleY = svgRect.height / H;
-      let left = (xx * scaleX) + (svgRect.left - wrapRect.left) + 12;
-      let top = (yy * scaleY) + (svgRect.top - wrapRect.top) - 48;
-      if (left > wrapRect.width - 260) left -= 270;
-      if (left < 4) left = 4;
-      if (top < 0) top = 8;
-      tooltip.style.left = left + "px";
-      tooltip.style.top = top + "px";
+      tooltip.style.left = "auto";
+      tooltip.style.right = "10px";
+      tooltip.style.top = "10px";
       slider.value = String(idx);
       sliderReadout.textContent = stageText + "  •  " + dateText +
         (comparisonGage ? "  •  " + (compareRecord ? fmtNumber(compareRecord.stage) + (compareRecord.stage_unit ? " " + compareRecord.stage_unit : "") : "No comparison observation") : "");
@@ -912,7 +1091,7 @@
     $("addCompareGage").disabled = true;
     $("compareNote").textContent = "Loading comparison observations…";
     try {
-      comparisonObservations = await loadObservations(comparisonGage.gage_id, periodHours);
+      comparisonObservations = await loadObservations(comparisonGage.gage_id, periodHours, customRange ? {start:customStartDate,end:customEndDate} : null);
       $("removeCompareGage").style.display = "";
       $("compareGageSelect").disabled = true;
       $("compareNote").textContent = comparisonObservations.length
@@ -956,12 +1135,12 @@
         populateComparisonChoices();
       }
       const tasks = [
-        loadObservations(selectedGage.gage_id,periodHours),
+        loadObservations(selectedGage.gage_id,periodHours,customRange ? {start:customStartDate,end:customEndDate} : null),
         loadHistoricalQcStatus(OBS_TABLE, "gage_id", selectedGage.gage_id, periodHours)
           .then(result => ({result, error:""})).catch(err => ({result:null, error:err.message}))
       ];
       if (comparisonGage) {
-        tasks.push(loadObservations(comparisonGage.gage_id, periodHours).catch(err => {
+        tasks.push(loadObservations(comparisonGage.gage_id, periodHours, customRange ? {start:customStartDate,end:customEndDate} : null).catch(err => {
           $("compareNote").textContent = "Comparison gage data unavailable: " + err.message;
           return [];
         }));
@@ -1006,6 +1185,15 @@
     renderChart(observations);
   });
 
+  $("floodStagesToggle").addEventListener("click", ()=>{
+    if (!selectedGage || !String(selectedGage.gage_name || "").toLowerCase().includes("bandera")) return;
+    floodStagesShown = !floodStagesShown;
+    $("floodStagesToggle").textContent = floodStagesShown ? "Hide Flood Stages" : "Show Flood Stages";
+    $("floodStagesToggle").classList.toggle("active", floodStagesShown);
+    $("floodStagesToggle").setAttribute("aria-pressed", floodStagesShown ? "true" : "false");
+    renderChart(observations);
+  });
+
   $("compareToggle").addEventListener("click", ()=>{
     const isOpen = $("compareControls").classList.toggle("open");
     $("compareToggle").setAttribute("aria-expanded", isOpen ? "true" : "false");
@@ -1036,14 +1224,262 @@
   });
 
   async function selectPeriod(hours) {
+    customRange=false;
+    customStartDate="";
+    customEndDate="";
     periodHours=hours;
-    ["btn24","btn7","btn30"].forEach(id => $(id).classList.remove("active"));
-    $(hours===24 ? "btn24" : hours===168 ? "btn7" : "btn30").classList.add("active");
+    setPresetButtons(hours===24 ? "btn24" : hours===168 ? "btn7" : "btn30");
+    $("customRangePanel").hidden = true;
+    $("customRangeToggle").setAttribute("aria-expanded","false");
     await refreshSelectedGage();
   }
   $("btn24").addEventListener("click", ()=>selectPeriod(24));
   $("btn7").addEventListener("click", ()=>selectPeriod(168));
   $("btn30").addEventListener("click", ()=>selectPeriod(720));
+  $("customRangeToggle").addEventListener("click", ()=>{
+    const panel = $("customRangePanel");
+    const willOpen = panel.hidden;
+    panel.hidden = !willOpen;
+    $("customRangeToggle").setAttribute("aria-expanded", willOpen ? "true" : "false");
+  });
+
+
+  function localDateInputValue(date) {
+    const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,"0"), d=String(date.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function setPresetButtons(activeId) {
+    ["btn24","btn7","btn30","customRangeToggle"].forEach(id => $(id).classList.toggle("active", id===activeId));
+  }
+
+  async function applyCustomDateRange() {
+    const start = $("rangeStart").value;
+    const end = $("rangeEnd").value;
+    if (!start || !end) { showMessage("Please select both a start date and an end date.", true); return; }
+    const startDate = new Date(start + "T00:00:00");
+    const endDate = new Date(end + "T00:00:00");
+    const days = Math.floor((endDate-startDate)/86400000)+1;
+    if (!Number.isFinite(days) || days < 1) { showMessage("The start date must be on or before the end date.", true); return; }
+    if (days > 366) { showMessage("Please choose a date range of no more than one year (366 days maximum).", true); return; }
+    customRange = true;
+    customStartDate = start;
+    customEndDate = end;
+    periodHours = days * 24;
+    setPresetButtons("customRangeToggle");
+    $("customRangePanel").hidden = true;
+    $("customRangeToggle").setAttribute("aria-expanded","false");
+    $("refreshNote").textContent = "Loading custom date range…";
+    await refreshSelectedGage();
+  }
+
+  function clearCustomDateRange() {
+    customRange = false;
+    customStartDate = "";
+    customEndDate = "";
+    periodHours = 24;
+    $("rangeStart").value = localDateInputValue(new Date(Date.now()-86400000));
+    $("rangeEnd").value = localDateInputValue(new Date());
+    setPresetButtons("btn24");
+    $("customRangePanel").hidden = true;
+    $("customRangeToggle").setAttribute("aria-expanded","false");
+    refreshSelectedGage();
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function safeFilename(value) {
+    return String(value || "gage").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "gage";
+  }
+
+  async function exportChartPng() {
+    const source = $("chart");
+    if (!source || !source.querySelector("path.stage-line")) {
+      showMessage("There is no hydrograph to export yet.", true); return;
+    }
+    try {
+      const legendItems = getVisibleLegendItems();
+      const clone = source.cloneNode(true);
+      clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
+      clone.setAttribute("width","1800");
+      clone.setAttribute("height","600");
+      const style = document.createElementNS("http://www.w3.org/2000/svg","style");
+      style.textContent = `
+        .gridline{stroke:#e6ecef;stroke-width:1}.axis-label{fill:#687985;font-size:11px}
+        .stage-line{fill:none;stroke:#247fae;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+        .comparison-line{fill:none;stroke:#8055a5;stroke-width:2.6;stroke-dasharray:7 4}
+        .threshold-line{stroke:#c43d36;stroke-width:2.2;stroke-dasharray:9 6}
+        .threshold-label{fill:#a8322c;font-size:11px;font-weight:700}
+        .bankfull-line{stroke:#c17a16;stroke-width:2.2;stroke-dasharray:3 5}
+        .bankfull-label{fill:#9a5b08;font-size:11px;font-weight:700}
+        .flood-band{stroke:none}`;
+      clone.insertBefore(style,clone.firstChild);
+      const serialized = new XMLSerializer().serializeToString(clone);
+      const svgBlob = new Blob([serialized],{type:"image/svg+xml;charset=utf-8"});
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const legendRows = Math.max(1, Math.ceil(legendItems.length / 3));
+        const legendHeight = legendItems.length ? 28 + legendRows * 34 : 0;
+        const canvas = document.createElement("canvas");
+        canvas.width = 1800;
+        canvas.height = 780 + legendRows * 34;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+        const gageName = selectedGage?.gage_name || "Stream Gage";
+        ctx.fillStyle="#17354b";
+        ctx.textBaseline="middle";
+        ctx.font="700 28px Arial, sans-serif";
+        ctx.fillText(gageName,54,30);
+        ctx.fillStyle="#657783";
+        ctx.font="16px Arial, sans-serif";
+        ctx.fillText("Gage ID: " + (selectedGage?.gage_id || "Not reported"),54,59);
+        ctx.drawImage(img,0,90,canvas.width,600);
+
+        if (legendItems.length) {
+          ctx.fillStyle="#20313d";
+          ctx.font="700 17px Arial, sans-serif";
+          ctx.fillText("Legend",54,716);
+          ctx.font="15px Arial, sans-serif";
+          legendItems.forEach((item,index) => {
+            const col=index%3, row=Math.floor(index/3);
+            const x=54+col*570, y=752+row*34;
+            ctx.strokeStyle=item.color; ctx.lineWidth=4;
+            ctx.setLineDash(item.line==="dashed"?[10,6]:item.line==="dotted"?[2,5]:[]);
+            if (item.line==="fill") {
+              ctx.fillStyle=item.color; ctx.globalAlpha=.28;
+              ctx.fillRect(x,y-7,24,12); ctx.globalAlpha=1;
+              ctx.strokeStyle=item.color; ctx.setLineDash([]);
+              ctx.strokeRect(x,y-7,24,12);
+            } else {
+              ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+28,y); ctx.stroke();
+            }
+            ctx.setLineDash([]);
+            ctx.fillStyle="#52636e";
+            ctx.fillText(item.label,x+40,y+1);
+          });
+        }
+        URL.revokeObjectURL(url);
+        canvas.toBlob(blob => {
+          if (blob) downloadBlob(blob,safeFilename(selectedGage.gage_name)+"-hydrograph.png");
+          else showMessage("The browser could not create the PNG image.",true);
+        },"image/png");
+      };
+      img.onerror=()=>{ URL.revokeObjectURL(url); showMessage("The chart could not be converted to PNG in this browser.",true); };
+      img.src=url;
+    } catch(err) { showMessage("PNG export failed: "+err.message,true); }
+  }
+
+  function csvCell(value) {
+    const textValue = value === null || value === undefined ? "" : String(value);
+    return '"' + textValue.replace(/"/g,'""') + '"';
+  }
+
+  function exportObservationCsv() {
+    if (!observations.length) { showMessage("There are no observations in the selected range to export.",true); return; }
+    const headers=["gage_name","gage_id","obs_time_central","stage","stage_unit","qc_status","qc_flags","qc_message"];
+    const rows=[headers.join(",")];
+    observations.forEach(r => rows.push([
+      selectedGage.gage_name, selectedGage.gage_id, fmtDate(r.obs_time),
+      r.stage, r.stage_unit || selectedGage.stage_unit || "", r.qc_status, r.qc_flags, r.qc_message
+    ].map(csvCell).join(",")));
+    if (comparisonGage && comparisonObservations.length) {
+      rows.push("");
+      rows.push("Comparison gage observations");
+      rows.push(headers.join(","));
+      comparisonObservations.forEach(r => rows.push([
+        comparisonGage.gage_name, comparisonGage.gage_id, fmtDate(r.obs_time),
+        r.stage, r.stage_unit || comparisonGage.stage_unit || "", r.qc_status, r.qc_flags, r.qc_message
+      ].map(csvCell).join(",")));
+    }
+    downloadBlob(new Blob(["\ufeff"+rows.join("\r\n")],{type:"text/csv;charset=utf-8"}),
+      safeFilename(selectedGage.gage_name)+"-observations.csv");
+  }
+
+  function exportBrandedReport() {
+    if (!selectedGage || !observations.length) {
+      showMessage("Load a gage and at least one observation before creating the summary report.",true); return;
+    }
+    const values=observations.map(r=>Number(r.stage)).filter(Number.isFinite);
+    const min=Math.min(...values), max=Math.max(...values);
+    const mean=values.reduce((a,b)=>a+b,0)/values.length;
+    const unit=observations.find(r=>r.stage_unit)?.stage_unit || selectedGage.stage_unit || "ft";
+    const dateRangeLabel=customRange ? `${customStartDate} through ${customEndDate}` :
+      `${fmtDate(observations[0].obs_time)} through ${fmtDate(observations[observations.length-1].obs_time)}`;
+    const visibleLegendItems = getVisibleLegendItems();
+    const reportLegend = legendHtml(visibleLegendItems);
+    const reportChart = $("chart").cloneNode(true);
+    reportChart.setAttribute("xmlns","http://www.w3.org/2000/svg");
+    const reportSvgStyle = document.createElementNS("http://www.w3.org/2000/svg","style");
+    reportSvgStyle.textContent = ".gridline{stroke:#e6ecef;stroke-width:1}.axis-label{fill:#687985;font-size:11px}.stage-line{fill:none;stroke:#247fae;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}.comparison-line{fill:none;stroke:#8055a5;stroke-width:2.6;stroke-dasharray:7 4}.threshold-line{stroke:#c43d36;stroke-width:2.2;stroke-dasharray:9 6}.threshold-label{fill:#a8322c;font-size:11px;font-weight:700}.bankfull-line{stroke:#c17a16;stroke-width:2.2;stroke-dasharray:3 5}.bankfull-label{fill:#9a5b08;font-size:11px;font-weight:700}";
+    reportChart.insertBefore(reportSvgStyle,reportChart.firstChild);
+    const chartSvg = new XMLSerializer().serializeToString(reportChart);
+    const chartData = "data:image/svg+xml;base64,"+btoa(unescape(encodeURIComponent(chartSvg)));
+    const logo="https://bcragd1.maps.arcgis.com/sharing/rest/content/items/ab8c83d2fa3e4425b63dc759ff7227b0/data";
+    const report=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BCRAGD Stream Gage Summary — ${selectedGage.gage_name}</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eef2f4;color:#20313d;font:13px Arial,sans-serif}.sheet{max-width:1000px;margin:24px auto;background:#fff;padding:28px 34px;box-shadow:0 2px 14px #0001}
+header{display:flex;align-items:center;gap:18px;background:#17354b;color:#fff;padding:18px 20px;border-radius:8px}
+header img{width:64px;height:64px;object-fit:cover;border-radius:50%;background:#fff}h1{font-size:22px;margin:0 0 5px}header p{margin:0;opacity:.85;font-size:11px}
+h2{font-size:15px;color:#17354b;border-bottom:1px solid #d9e2e7;padding-bottom:7px;margin:24px 0 10px}
+.meta{display:grid;grid-template-columns:1.35fr 1fr 1.5fr;gap:18px;align-items:start;margin-top:15px;padding:2px 2px 8px}
+.meta div{background:transparent;border:0;border-radius:0;padding:0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:15px}
+.stats div{background:#f4f7f8;border:1px solid #d9e2e7;border-radius:6px;padding:10px}
+.k{font-size:9px;color:#657783;text-transform:uppercase;font-weight:bold;letter-spacing:.5px}.v{font-size:15px;color:#17354b;font-weight:bold;margin-top:4px}
+.meta .v{font-size:13px;color:#344b59;font-weight:600;margin:0;line-height:1.5}
+.meta div:first-child .v{font-size:16px;color:#17354b;font-weight:700}
+.chart{width:100%;border:1px solid #e1e7eb;border-radius:6px;margin-top:8px}
+.note{font-size:10px;color:#657783;line-height:1.5}.actions{display:flex;gap:8px;justify-content:flex-end;margin:0 0 12px}
+button{padding:9px 13px;background:#17354b;color:white;border:0;border-radius:5px;font-weight:bold;cursor:pointer}
+@media print{body{background:#fff}.sheet{margin:0;max-width:none;box-shadow:none;padding:12mm}.actions{display:none}}
+@media(max-width:650px){.sheet{margin:0;padding:15px}.meta{grid-template-columns:1fr;gap:5px}.stats{grid-template-columns:1fr 1fr}header{align-items:flex-start}header img{width:48px;height:48px}}
+</style></head><body><div class="sheet">
+<div class="actions"><button onclick="window.print()">Print / Save as PDF</button></div>
+<header><img src="${logo}" alt="BCRAGD seal"><div><h1>Stream Gage Monitoring Summary</h1><p>BANDERA COUNTY RIVER AUTHORITY &amp; GROUNDWATER DISTRICT</p><p>Prepared ${fmtDate(Date.now())}</p></div></header>
+<div class="meta">
+<div><div class="v">${selectedGage.gage_name || selectedGage.gage_id}</div></div>
+<div><div class="v">Gage ID: ${selectedGage.gage_id} · ${selectedGage.provider || "Provider not reported"}</div></div>
+<div><div class="v">${dateRangeLabel}</div></div>
+</div>
+<h2>Hydrograph</h2><img class="chart" src="${chartData}" alt="Selected hydrograph">
+${reportLegend}
+<div class="stats">
+<div><div class="k">Observations</div><div class="v">${observations.length.toLocaleString()}</div></div>
+<div><div class="k">Minimum Stage</div><div class="v">${fmtNumber(min)} ${unit}</div></div>
+<div><div class="k">Maximum Stage</div><div class="v">${fmtNumber(max)} ${unit}</div></div>
+<div><div class="k">Mean Stage</div><div class="v">${fmtNumber(mean)} ${unit}</div></div>
+<div><div class="k">Stage Range</div><div class="v">${fmtNumber(max-min)} ${unit}</div></div>
+<div><div class="k">Data Status</div><div class="v">${selectedGage.data_status || "Not reported"}</div></div>
+</div>
+<h2>QA/QC and Data Notes</h2><p>Current QA/QC status shown in the monitoring interface: ${$("qcChip").textContent || "Not reported"}.</p>
+<p>${$("qcMessage").textContent || "No additional QA/QC message is displayed."}</p>
+<p class="note">Data are provisional and are provided for informational purposes. Flood-stage categories and thresholds are site-specific. This summary is not an official flood warning, forecast, or road-closure determination.</p>
+<p class="note">Source: BCRAGD public stream monitoring services. Summary statistics are calculated from ${observations.length.toLocaleString()} selected-gage observations; individual observation records are not included in this report.</p>
+</div></body></html>`;
+    downloadBlob(new Blob([report],{type:"text/html;charset=utf-8"}),
+      safeFilename(selectedGage.gage_name)+"-BCRAGD-summary-report.html");
+  }
+
+  $("applyDateRange").addEventListener("click",applyCustomDateRange);
+  $("clearDateRange").addEventListener("click",clearCustomDateRange);
+  $("exportPng").addEventListener("click",exportChartPng);
+  $("exportCsv").addEventListener("click",exportObservationCsv);
+  $("exportReport").addEventListener("click",exportBrandedReport);
+  ["exportPng","exportCsv","exportReport"].forEach(id => $(id).addEventListener("click",()=>{
+    $("exportMenu").open = false;
+  }));
+
+  const today = new Date();
+  $("rangeStart").value = localDateInputValue(new Date(today.getFullYear(),today.getMonth(),today.getDate()-1));
+  $("rangeEnd").value = localDateInputValue(today);
 
   loadGages().catch(err=>{
     $("loading").style.display="none";
