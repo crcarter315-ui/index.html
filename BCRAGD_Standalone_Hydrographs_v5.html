@@ -405,7 +405,9 @@
   let thresholdShown = ["1", "true", "yes"].includes(
     String(initialUrlParams.get("threshold") || "").toLowerCase()
   );
-  let bankfullShown = false;
+  let bankfullShown = ["1", "true", "yes"].includes(
+    String(initialUrlParams.get("bankfull") || "").toLowerCase()
+  );
   let floodStagesShown = false;
 
   function showMessage(text, isError=false) {
