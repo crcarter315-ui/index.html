@@ -525,6 +525,16 @@ h2 {
   margin-top:8px;
 }
 
+.export-menu { position:relative; display:flex; justify-content:flex-end; margin:0 0 14px; }
+.export-menu > summary { list-style:none; cursor:pointer; display:inline-block; border:1px solid #c7d5dc; background:#fff; color:var(--navy); padding:5px 8px; border-radius:6px; font-size:10px; line-height:1.2; font-weight:700; }
+.export-menu > summary::-webkit-details-marker { display:none; }
+.export-menu[open] > summary { background:var(--blue-light); border-color:var(--blue); }
+.export-menu-options { position:absolute; z-index:20; right:0; top:calc(100% + 6px); min-width:220px; display:grid; gap:5px; padding:8px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px #17354b20; }
+.export-menu-options button { width:100%; text-align:left; font-size:11px; padding:9px 11px; }
+.export-menu-options .report-button { background:#fff; border-color:#c7d5dc; color:var(--navy); }
+.station-heading { display:flex; flex-direction:column; gap:5px; }
+.station-title-row { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+@media(max-width:650px) { .export-menu { justify-content:flex-start; } .export-menu-options { left:0; right:auto; } }
 @media(max-width:650px) {
   .page { padding:10px 8px 22px; }
   header { padding:19px 15px; gap:12px; }
@@ -618,10 +628,20 @@ h2 {
 
     </div>
     <div class="qc-message" style="margin-top:9px">
-      Custom ranges use the historical observations available in the public
-      rainfall observations table.
+      Choose any date range up to 1 year. Dates use your browser's local time;
+      available observations depend on the historical retention window.
     </div>
   </div>
+
+  <details class="export-menu" id="exportMenu">
+    <summary aria-label="Open export options">Export ▾</summary>
+    <div class="export-menu-options" aria-label="Export options">
+      <button id="exportRainPng" type="button">Rainfall Observations PNG</button>
+      <button id="exportCumulativePng" type="button">Cumulative Rainfall PNG</button>
+      <button id="exportCsv" type="button">Observation CSV</button>
+      <button id="exportReport" class="report-button" type="button">BCRAGD Summary Report</button>
+    </div>
+  </details>
 
   <div id="message" class="message"></div>
 
@@ -854,9 +874,10 @@ const STATION_LAYER = SERVICE + "/0";
 const OBS_TABLE = SERVICE + "/1";
 
 const RAIN_HISTORY_DAYS = 8;
-const PAGE_SIZE = 1000;
+const PAGE_SIZE = 2000;
 const REFRESH_MS = 5 * 60 * 1000;
 const CURRENT_MINUTES = 60;
+const MAX_RANGE_DAYS = 365;
 
 const $ = id => document.getElementById(id);
 
@@ -982,7 +1003,9 @@ async function queryFeatures(url, params) {
   const all = [];
   let offset = 0;
 
-  for (let page = 0; page < 30; page++) {
+  let transferLimitStillExceeded = false;
+
+  for (let page = 0; page < 150; page++) {
 
     const p = new URLSearchParams({
       f:"json",
@@ -1015,10 +1038,16 @@ async function queryFeatures(url, params) {
     all.push(...features.map(f => f.attributes || {}));
 
     if (!data.exceededTransferLimit || features.length === 0) {
+      transferLimitStillExceeded = false;
       break;
     }
 
+    transferLimitStillExceeded = true;
     offset += features.length;
+  }
+
+  if (transferLimitStillExceeded) {
+    throw new Error("The rainfall query exceeded the 150-page safety limit. Narrow the selected date range and try again.");
   }
 
   return all;
@@ -1350,60 +1379,53 @@ function calculateCumulative(rows) {
 // SHARED SVG CHART HELPERS
 // ------------------------------------------------------------
 
+// Use the same 1-2-5 tick progression as the stream hydrograph page.
+function niceAxisBounds(minValue, maxValue, targetIntervals=6) {
+  let span = maxValue - minValue;
+  if (!Number.isFinite(span) || span <= 0) span = Math.max(Math.abs(maxValue) * 0.1, 0.01);
+  const rawStep = span / targetIntervals;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const normalized = rawStep / magnitude;
+  const factor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  const step = factor * magnitude;
+  const lower = Math.floor(minValue / step) * step;
+  const upper = Math.ceil(maxValue / step) * step;
+  const decimals = Math.max(0, Math.min(4, -Math.floor(Math.log10(step))));
+  return {lower, upper:upper > lower ? upper : lower + step, step, decimals};
+}
+
 function chartGrid(options) {
-
-  const {
-    W,H,L,R,T,B,
-    ymax,
-    xmin,xmax,
-    yLabel,
-    start,
-    end
-  } = options;
-
+  const {W,H,L,R,T,B,xmin,xmax,yLabel,start,end} = options;
+  const axis = niceAxisBounds(
+    options.ymin === undefined ? 0 : options.ymin,
+    options.ymax === undefined ? 1 : options.ymax,
+    6
+  );
+  const ymin = axis.lower;
+  const ymax = axis.upper;
   const pw = W-L-R;
   const ph = H-T-B;
-
-  const y = v => T + (1 - Number(v)/ymax) * ph;
-
+  const y = v => T + (1 - (Number(v)-ymin)/(ymax-ymin)) * ph;
   const x = v => L + (Number(v)-xmin)/(xmax-xmin)*pw;
-
   let out = "";
 
-  for (let i=0; i<=4; i++) {
-
-    const val = ymax*i/4;
+  const tickCount = Math.round((ymax-ymin)/axis.step);
+  for (let i=0; i<=tickCount; i++) {
+    const val = ymin + axis.step*i;
     const yy = y(val);
-
-    out +=
-      `<line class="gridline" x1="${L}" y1="${yy}" ` +
-      `x2="${W-R}" y2="${yy}"/>`;
-
-    out +=
-      `<text class="axis-label" x="${L-10}" ` +
-      `y="${yy+4}" text-anchor="end">${val.toFixed(2)}</text>`;
+    out += `<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/>`;
+    out += `<text class="axis-label" x="${L-10}" y="${yy+4}" text-anchor="end">${val.toFixed(axis.decimals)}</text>`;
   }
 
   for (let i=0; i<=4; i++) {
-
     const time = start + (end-start)*i/4;
     const xx = x(time);
-
-    out +=
-      `<line class="gridline" x1="${xx}" y1="${T}" ` +
-      `x2="${xx}" y2="${H-B}"/>`;
-
-    out +=
-      `<text class="axis-label" x="${xx}" y="${H-15}" ` +
-      `text-anchor="middle">${escapeHtml(fmtAxisDate(time))}</text>`;
+    out += `<line class="gridline" x1="${xx}" y1="${T}" x2="${xx}" y2="${H-B}"/>`;
+    out += `<text class="axis-label" x="${xx}" y="${H-15}" text-anchor="middle">${escapeHtml(fmtAxisDate(time))}</text>`;
   }
 
-  out +=
-    `<text class="axis-label" x="18" y="${H/2}" ` +
-    `text-anchor="middle" transform="rotate(-90 18 ${H/2})" ` +
-    `style="font-size:11px;font-weight:700">${escapeHtml(yLabel)}</text>`;
-
-  return {out,x,y};
+  out += `<text class="axis-label" x="18" y="${H/2}" text-anchor="middle" transform="rotate(-90 18 ${H/2})" style="font-size:11px;font-weight:700">${escapeHtml(yLabel)}</text>`;
+  return {out,x,y,ymin,ymax,axis};
 }
 
 // ------------------------------------------------------------
@@ -1432,11 +1454,11 @@ function renderObservationChart(rows) {
 
   const values = rows.map(r => Number(r.rainfall_inches));
 
-  const maxRain = Math.max(...values, 0);
+  const maxRain = values.reduce((max, value) => Math.max(max, value), 0);
 
-  const ymax = maxRain > 0
-    ? maxRain * 1.18
-    : 0.10;
+  const rawMax = maxRain > 0 ? maxRain * 1.12 : 0.10;
+  const axis = niceAxisBounds(0, rawMax, 6);
+  const ymax = axis.upper;
 
   let xmin = periodStart;
   let xmax = periodEnd;
@@ -1444,7 +1466,7 @@ function renderObservationChart(rows) {
   if (xmin === xmax) xmax += 60000;
 
   const grid = chartGrid({
-    W,H,L,R,T,B,ymax,xmin,xmax,
+    W,H,L,R,T,B,ymin:0,ymax,xmin,xmax,
     start:periodStart,
     end:periodEnd,
     yLabel:"Rainfall (in)"
@@ -1549,9 +1571,9 @@ function renderCumulativeChart(rows) {
   const finalTotal =
     cumulativeRows[cumulativeRows.length-1].cumulative_rainfall;
 
-  const ymax = finalTotal > 0
-    ? finalTotal * 1.15
-    : 0.10;
+  const rawMax = finalTotal > 0 ? finalTotal * 1.12 : 0.10;
+  const axis = niceAxisBounds(0, rawMax, 6);
+  const ymax = axis.upper;
 
   let xmin=periodStart;
   let xmax=periodEnd;
@@ -1559,7 +1581,7 @@ function renderCumulativeChart(rows) {
   if (xmin === xmax) xmax += 60000;
 
   const grid = chartGrid({
-    W,H,L,R,T,B,ymax,xmin,xmax,
+    W,H,L,R,T,B,ymin:0,ymax,xmin,xmax,
     start:periodStart,
     end:periodEnd,
     yLabel:"Cumulative rainfall (in)"
@@ -1691,8 +1713,9 @@ function updateStatistics(rows) {
     0
   );
 
-  const maximum = Math.max(
-    ...rows.map(r => Number(r.rainfall_inches))
+  const maximum = rows.reduce(
+    (max, r) => Math.max(max, Number(r.rainfall_inches)),
+    0
   );
 
   $("rangeTotal").textContent =
@@ -1962,6 +1985,11 @@ async function applyCustomRange() {
     return;
   }
 
+  if ((end-start) > MAX_RANGE_DAYS*86400000) {
+    showMessage("Custom date ranges cannot exceed 1 year.");
+    return;
+  }
+
   periodMode = "custom";
 
   periodStart = start;
@@ -1972,6 +2000,102 @@ async function applyCustomRange() {
   $("customControls").classList.add("open");
 
   await refreshSelectedStation();
+}
+
+// ------------------------------------------------------------
+// EXPORTS — CHART PNG, OBSERVATION CSV, BRANDED SUMMARY
+// ------------------------------------------------------------
+
+function safeFilename(value) {
+  return String(value || "rain-gauge").replace(/[^a-z0-9_-]+/gi,"-").replace(/^-+|-+$/g,"").toLowerCase() || "rain-gauge";
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportChartPng(svgId, title, filename) {
+  const svg = $(svgId);
+  if (!observations.length) {
+    showMessage("There are no rainfall observations in the selected range to export.");
+    return;
+  }
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", "1800");
+  clone.setAttribute("height", "560");
+  const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  style.textContent = ".gridline{stroke:#e6ecef;stroke-width:1}.axis-label{fill:#687985;font:11px Arial}.rain-bar{fill:#4d9ac2;opacity:.9}.cumulative-area{fill:#247fae;fill-opacity:.18}.cumulative-line{fill:none;stroke:#17618c;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}";
+  clone.insertBefore(style, clone.firstChild);
+  const svgText = new XMLSerializer().serializeToString(clone);
+  const url = URL.createObjectURL(new Blob([svgText], {type:"image/svg+xml;charset=utf-8"}));
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1800; canvas.height = 680;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = "#17354b"; ctx.font = "bold 28px Arial";
+    ctx.fillText(title, 50, 48);
+    ctx.fillStyle = "#657783"; ctx.font = "16px Arial";
+    ctx.fillText((selectedStation?.station_name || "Rain Gauge") + " · " + (selectedStation?.provider || selectedStation?.Provider || "Provider unavailable") + " · " + (selectedStation?.station_id ?? ""), 50, 76);
+    ctx.drawImage(img, 0, 100, 1800, 560);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(blob => {
+      if (blob) downloadBlob(blob, filename);
+      else showMessage("The browser could not create the PNG image.", true);
+    }, "image/png");
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); showMessage("The chart could not be converted to PNG in this browser.", true); };
+  img.src = url;
+}
+
+function csvCell(value) {
+  const textValue = value === null || value === undefined ? "" : String(value);
+  return '"' + textValue.replace(/"/g,'""') + '"';
+}
+
+function exportObservationCsv() {
+  if (!observations.length) { showMessage("There are no observations in the selected range to export.", true); return; }
+  const headers = ["station_name","provider","station_id","display_id","obs_time_central","rainfall_inches"];
+  const rows = [headers.join(",")];
+  observations.forEach(r => rows.push([
+    selectedStation?.station_name, selectedStation?.provider || selectedStation?.Provider,
+    selectedStation?.station_id, selectedStation?.display_id, fmtDate(r.obs_time), r.rainfall_inches
+  ].map(csvCell).join(",")));
+  downloadBlob(new Blob(["\ufeff"+rows.join("\r\n")], {type:"text/csv;charset=utf-8"}),
+    safeFilename(selectedStation?.station_name)+"-rainfall-observations.csv");
+}
+
+function exportBrandedReport() {
+  if (!selectedStation || !observations.length) {
+    showMessage("Load a rain gauge and at least one observation before creating the summary report.", true);
+    return;
+  }
+  const total = observations.reduce((sum,r) => sum + Number(r.rainfall_inches), 0);
+  const maximum = observations.reduce((max,r) => Math.max(max, Number(r.rainfall_inches)), 0);
+  const reportRain = value => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? "Not reported" : Number(value).toFixed(2) + " in";
+  const logo = "https://bcragd1.maps.arcgis.com/sharing/rest/content/items/ab8c83d2fa3e4425b63dc759ff7227b0/data";
+  const chartDataUri = svgId => {
+    const clone = $(svgId).cloneNode(true);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    style.textContent = ".gridline{stroke:#e6ecef;stroke-width:1}.axis-label{fill:#687985;font:11px Arial}.rain-bar{fill:#4d9ac2;opacity:.9}.cumulative-area{fill:#247fae;fill-opacity:.18}.cumulative-line{fill:none;stroke:#17618c;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}";
+    clone.insertBefore(style, clone.firstChild);
+    const markup = new XMLSerializer().serializeToString(clone);
+    return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(markup)));
+  };
+  const observationChartImage = chartDataUri("rainChart");
+  const cumulativeChartImage = chartDataUri("cumulativeChart");
+  const report = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BCRAGD Rainfall Summary — ${escapeHtml(selectedStation.station_name || selectedStation.station_id)}</title><style>*{box-sizing:border-box}body{margin:0;background:#eef2f4;color:#20313d;font:13px Arial,sans-serif}.sheet{max-width:1000px;margin:24px auto;background:#fff;padding:28px 34px;box-shadow:0 2px 14px #0001}header{display:flex;align-items:center;gap:18px;background:#17354b;color:#fff;padding:18px 20px;border-radius:8px}header img{width:64px;height:64px;object-fit:cover;border-radius:50%;background:#fff}h1{font-size:22px;margin:0 0 5px}header p{margin:0;opacity:.85;font-size:11px}h2{font-size:15px;color:#17354b;border-bottom:1px solid #d9e2e7;padding-bottom:7px;margin:24px 0 10px}.meta{margin-top:10px;color:#657783;font-size:11px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:15px}.stats div{background:#f4f7f8;border:1px solid #d9e2e7;border-radius:6px;padding:10px}.k{font-size:9px;color:#657783;text-transform:uppercase;font-weight:bold;letter-spacing:.5px}.v{font-size:15px;color:#17354b;font-weight:bold;margin-top:4px}.note{font-size:10px;color:#657783;line-height:1.5}.chart{display:block;width:100%;border:1px solid #e1e7eb;border-radius:6px;margin:8px 0 16px}@media print{body{background:#fff}.sheet{margin:0;max-width:none;box-shadow:none;padding:12mm}}@media(max-width:650px){.sheet{margin:0;padding:15px}.stats{grid-template-columns:1fr 1fr}header{align-items:flex-start}header img{width:48px;height:48px}}</style></head><body><div class="sheet"><header><img src="${logo}" alt="BCRAGD seal"><div><h1>Rainfall Monitoring Summary</h1><p>BANDERA COUNTY RIVER AUTHORITY &amp; GROUNDWATER DISTRICT</p><p>Prepared ${fmtDate(Date.now())}</p></div></header><div class="meta"><strong>${escapeHtml(selectedStation.station_name || "Rain Gauge")}</strong><br>${escapeHtml(selectedStation.provider || selectedStation.Provider || "Provider not reported")} · Station ${escapeHtml(selectedStation.station_id)} · ${escapeHtml(selectedStation.county || "County not reported")}</div><h2>Rainfall Observations</h2><img class="chart" src="${observationChartImage}" alt="Individual rainfall observations"><h2>Cumulative Rainfall</h2><img class="chart" src="${cumulativeChartImage}" alt="Cumulative rainfall"><h2>Selected Period Statistics</h2><div class="stats"><div><div class="k">Observations</div><div class="v">${observations.length.toLocaleString()}</div></div><div><div class="k">Total Rainfall</div><div class="v">${total.toFixed(2)} in</div></div><div><div class="k">Maximum Interval</div><div class="v">${maximum.toFixed(2)} in</div></div><div><div class="k">1 Hour Rainfall</div><div class="v">${reportRain(selectedStation.rain_1hr)}</div></div><div><div class="k">24 Hour Rainfall</div><div class="v">${reportRain(selectedStation.rain_24hr)}</div></div><div><div class="k">7 Day Rainfall</div><div class="v">${reportRain(selectedStation.rain_7day)}</div></div></div><h2>Data Notes</h2><p>${escapeHtml($("qcChip").textContent || "QA/QC status not reported")}</p><p>${escapeHtml($("qcFlags").textContent || "No QA/QC flags reported.")}</p><p>${escapeHtml($("qcMessage").textContent || "No additional QA/QC message reported.")}</p><p class="note">Rainfall observations and summary statistics are provisional and are provided for informational purposes. The cumulative chart represents the sum of observations returned for the selected period and may be incomplete when the selected period exceeds the historical retention window.</p><p class="note">Source: BCRAGD public rainfall monitoring services.</p></div></body></html>`;
+  downloadBlob(new Blob([report], {type:"text/html;charset=utf-8"}), safeFilename(selectedStation.station_name)+"-BCRAGD-rainfall-summary.html");
 }
 
 // ------------------------------------------------------------
@@ -2003,6 +2127,11 @@ $("btn30").addEventListener("click", () => selectPeriod("30"));
 $("btnCustom").addEventListener("click", openCustomRange);
 
 $("applyCustom").addEventListener("click", applyCustomRange);
+$("exportRainPng").addEventListener("click", () => exportChartPng("rainChart", "Rainfall Observations", safeFilename(selectedStation?.station_name)+"-rainfall-observations.png"));
+$("exportCumulativePng").addEventListener("click", () => exportChartPng("cumulativeChart", "Cumulative Rainfall", safeFilename(selectedStation?.station_name)+"-cumulative-rainfall.png"));
+$("exportCsv").addEventListener("click", exportObservationCsv);
+$("exportReport").addEventListener("click", exportBrandedReport);
+["exportRainPng","exportCumulativePng","exportCsv","exportReport"].forEach(id => $(id).addEventListener("click", () => { $("exportMenu").open = false; }));
 
 // ------------------------------------------------------------
 // INITIALIZE
