@@ -381,7 +381,9 @@
   const RAIN_GAGE_LAYER = RAIN_SERVICE + "/0";
   const RAIN_OBS_TABLE = RAIN_SERVICE + "/1";
   const RAIN_HISTORY_DAYS = 8;
-  const PAGE_SIZE = 1000;
+  const PAGE_SIZE = 2000;
+  const LONG_RANGE_DAYS = 30;
+  const MAX_CHART_POINTS = 5000;
   const REFRESH_MS = 5 * 60 * 1000;
 
   const $ = id => document.getElementById(id);
@@ -461,6 +463,7 @@
       const features = data.features || [];
       all.push(...features.map(f => f.attributes || {}));
       if (!data.exceededTransferLimit || features.length === 0) break;
+      if (page === 149) throw new Error("ArcGIS pagination safety limit reached; narrow the selected date range and try again.");
       offset += features.length;
     }
     return all;
@@ -542,29 +545,69 @@
     }
   }
 
+  function arcGisTimestamp(epochMs) {
+    return new Date(epochMs).toISOString().slice(0,19).replace("T"," ");
+  }
+
   async function loadObservations(gageId, hours, dateRange=null) {
-    let dateClause = "";
+    let startMs, endMs;
     if (dateRange && dateRange.start && dateRange.end) {
-      const start = new Date(dateRange.start + "T00:00:00");
+      startMs = new Date(dateRange.start + "T00:00:00").getTime();
       const endExclusive = new Date(dateRange.end + "T00:00:00");
       endExclusive.setDate(endExclusive.getDate() + 1);
-      const startSql = start.toISOString().slice(0,19).replace("T"," ");
-      const endSql = endExclusive.toISOString().slice(0,19).replace("T"," ");
-      dateClause = " AND obs_time >= TIMESTAMP '" + startSql + "' AND obs_time < TIMESTAMP '" + endSql + "'";
+      endMs = endExclusive.getTime();
     } else {
-      const start = new Date(Date.now() - hours * 60 * 60 * 1000);
-      const sqlDate = start.toISOString().slice(0,19).replace("T"," ");
-      dateClause = " AND obs_time >= TIMESTAMP '" + sqlDate + "'";
+      endMs = Date.now();
+      startMs = endMs - hours * 60 * 60 * 1000;
     }
-    const where = "gage_id = '" + escSql(gageId) + "'" + dateClause;
-    const rows = await queryFeatures(OBS_TABLE, {
-      where,
-      outFields:"OBJECTID,gage_id,gage_name,provider,obs_time,stage,stage_unit,qc_status,qc_flags,qc_message,qc_timestamp,qc_version",
+
+    const baseWhere = "gage_id = '" + escSql(gageId) + "'";
+    const fields = "OBJECTID,gage_id,gage_name,provider,obs_time,stage,stage_unit,qc_status,qc_flags,qc_message,qc_timestamp,qc_version";
+    const rangeDays = (endMs - startMs) / 86400000;
+    const chunkMs = rangeDays > LONG_RANGE_DAYS ? LONG_RANGE_DAYS * 86400000 : endMs - startMs;
+    const chunks = [];
+    for (let cursor = startMs; cursor < endMs; cursor += Math.max(chunkMs, 1)) {
+      chunks.push({start:cursor, end:Math.min(endMs, cursor + Math.max(chunkMs, 1))});
+    }
+
+    // Long ranges are requested as independent 30-day windows. Each window is
+    // paged by OBJECTID/offset by queryFeatures, limiting each response size.
+    const batches = await Promise.all(chunks.map(chunk => queryFeatures(OBS_TABLE, {
+      where: baseWhere + " AND obs_time >= TIMESTAMP '" + arcGisTimestamp(chunk.start) +
+        "' AND obs_time < TIMESTAMP '" + arcGisTimestamp(chunk.end) + "'",
+      outFields:fields,
       returnGeometry:"false",
       orderByFields:"obs_time ASC, OBJECTID ASC"
+    })));
+    const unique = new Map();
+    batches.flat().forEach(row => {
+      if (row.OBJECTID !== null && row.OBJECTID !== undefined) unique.set(String(row.OBJECTID), row);
     });
-    return rows.filter(r => r.obs_time !== null && r.stage !== null && Number.isFinite(Number(r.stage)))
+    return Array.from(unique.values())
+      .filter(r => r.obs_time !== null && r.stage !== null && Number.isFinite(Number(r.stage)))
       .sort((a,b) => Number(a.obs_time) - Number(b.obs_time));
+  }
+
+  // Preserve temporal shape and short-lived peaks by retaining each bucket's
+  // minimum and maximum observation rather than taking every Nth record.
+  function downsampleObservations(rows, maxPoints=MAX_CHART_POINTS) {
+    if (rows.length <= maxPoints) return rows;
+    const bucketCount = Math.max(1, Math.floor(maxPoints / 2));
+    const bucketSize = rows.length / bucketCount;
+    const selected = new Map();
+    for (let bucket=0; bucket<bucketCount; bucket++) {
+      const start = Math.floor(bucket * bucketSize);
+      const end = Math.min(rows.length, Math.floor((bucket + 1) * bucketSize));
+      if (end <= start) continue;
+      let minIndex = start, maxIndex = start;
+      for (let i=start+1; i<end; i++) {
+        if (Number(rows[i].stage) < Number(rows[minIndex].stage)) minIndex = i;
+        if (Number(rows[i].stage) > Number(rows[maxIndex].stage)) maxIndex = i;
+      }
+      selected.set(minIndex, rows[minIndex]);
+      selected.set(maxIndex, rows[maxIndex]);
+    }
+    return Array.from(selected.entries()).sort((a,b) => a[0]-b[0]).map(entry => entry[1]);
   }
 
   async function queryHistoricalQcRecord(tableUrl, idField, idValue, status, hours) {
@@ -821,6 +864,21 @@
     })[ch]);
   }
 
+  // Choose clean 1-2-5 intervals and rounded axis bounds for readable Y-axis labels.
+  function niceAxisBounds(minValue, maxValue, targetIntervals = 6) {
+    let span = maxValue - minValue;
+    if (!Number.isFinite(span) || span <= 0) span = Math.max(Math.abs(maxValue) * 0.1, 1);
+    const rawStep = span / targetIntervals;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const normalized = rawStep / magnitude;
+    const niceFactor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+    const step = niceFactor * magnitude;
+    const lower = Math.floor(minValue / step) * step;
+    const upper = Math.ceil(maxValue / step) * step;
+    const decimals = Math.max(0, Math.min(4, -Math.floor(Math.log10(step))));
+    return { lower, upper: upper > lower ? upper : lower + step, step, decimals };
+  }
+
   // One source of truth for the on-screen, PNG, and report legends.
   function getVisibleLegendItems() {
     return Array.from($("chartLegend").querySelectorAll(".legend-item"))
@@ -848,7 +906,9 @@
 
   function renderChart(rows) {
     observations = rows;
-    const compareRows = comparisonObservations;
+    const allRows = rows;
+    rows = downsampleObservations(rows);
+    const compareRows = downsampleObservations(comparisonObservations);
     const svg = $("chart");
     const slider = $("chartSlider");
     const sliderReadout = $("sliderReadout");
@@ -905,8 +965,9 @@
     const xs = rows.map(r => Number(r.obs_time));
     const ys = rows.map(r => Number(r.stage));
     const compareYs = compareRows.map(r => Number(r.stage)).filter(Number.isFinite);
-    const minStage = Math.min(...ys);
-    const maxStage = Math.max(...ys);
+    const fullStageValues = allRows.map(r => Number(r.stage)).filter(Number.isFinite);
+    const minStage = Math.min(...fullStageValues);
+    const maxStage = Math.max(...fullStageValues);
     const combinedMin = compareYs.length ? Math.min(minStage, ...compareYs) : minStage;
     const combinedMax = compareYs.length ? Math.max(maxStage, ...compareYs) : maxStage;
     const stageUnit = rows.find(r => r.stage_unit)?.stage_unit || selectedGage.stage_unit || "";
@@ -941,17 +1002,18 @@
       ymin = Math.min(ymin, ...floodStages);
       ymax = Math.max(ymax, ...floodStages);
     }
-    if (ymin === ymax) { ymin -= 0.5; ymax += 0.5; }
-    const pad=(ymax-ymin)*0.12; ymin-=pad; ymax+=pad;
+    const axis = niceAxisBounds(ymin, ymax, 6);
+    ymin = axis.lower;
+    ymax = axis.upper;
     const x = v => L + ((v-xmin)/(xmax-xmin))*pw;
     const y = v => T + ((ymax-v)/(ymax-ymin))*ph;
 
     let out = `<text class="axis-label" x="20" y="${H/2}" text-anchor="middle" transform="rotate(-90 20 ${H/2})" style="font-size:12px;font-weight:700">Gage Height (${stageUnit || "ft"})</text>`;
-    const yTicks=5;
+    const yTicks = Math.round((ymax - ymin) / axis.step);
     for(let i=0;i<=yTicks;i++){
-      const val=ymin+(ymax-ymin)*i/yTicks, yy=y(val);
+      const val=ymin+(axis.step*i), yy=y(val);
       out += `<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/>`;
-      out += `<text class="axis-label" x="${L-10}" y="${yy+4}" text-anchor="end">${val.toFixed(2)}</text>`;
+      out += `<text class="axis-label" x="${L-10}" y="${yy+4}" text-anchor="end">${val.toFixed(axis.decimals)}</text>`;
     }
     const xTicks=5;
     for(let i=0;i<=xTicks;i++){
@@ -1009,8 +1071,9 @@
     out += `<circle id="hoverDot" class="hover-dot" cx="0" cy="0" r="5" visibility="hidden"/>`;
     out += `<circle id="compareHoverDot" cx="0" cy="0" r="5" fill="var(--compare)" stroke="white" stroke-width="2" visibility="hidden"/>`;
     svg.innerHTML=out;
-    $("pointCount").textContent = rows.length.toLocaleString() + " selected-gage observations" +
-      (comparisonGage ? " • " + compareRows.length.toLocaleString() + " comparison observations" : "") +
+    $("pointCount").textContent = allRows.length.toLocaleString() + " selected-gage observations" +
+      (rows.length < allRows.length ? " • " + rows.length.toLocaleString() + " plotted points (downsampled)" : "") +
+      (comparisonGage ? " • " + comparisonObservations.length.toLocaleString() + " comparison observations" : "") +
       (customRange ? " • Custom date range" : "");
     const hoverLine=svg.querySelector("#hoverLine");
     const hoverDot=svg.querySelector("#hoverDot");
@@ -1341,7 +1404,7 @@
         ctx.fillText(gageName,54,30);
         ctx.fillStyle="#657783";
         ctx.font="16px Arial, sans-serif";
-        ctx.fillText("Gage ID: " + (selectedGage?.gage_id || "Not reported"),54,59);
+        ctx.fillText((selectedGage?.provider ? selectedGage.provider + " " : "") + (selectedGage?.gage_id || "Not reported"),54,59);
         ctx.drawImage(img,0,90,canvas.width,600);
 
         if (legendItems.length) {
@@ -1412,8 +1475,6 @@
     const min=Math.min(...values), max=Math.max(...values);
     const mean=values.reduce((a,b)=>a+b,0)/values.length;
     const unit=observations.find(r=>r.stage_unit)?.stage_unit || selectedGage.stage_unit || "ft";
-    const dateRangeLabel=customRange ? `${customStartDate} through ${customEndDate}` :
-      `${fmtDate(observations[0].obs_time)} through ${fmtDate(observations[observations.length-1].obs_time)}`;
     const visibleLegendItems = getVisibleLegendItems();
     const reportLegend = legendHtml(visibleLegendItems);
     const reportChart = $("chart").cloneNode(true);
@@ -1431,27 +1492,30 @@
 header{display:flex;align-items:center;gap:18px;background:#17354b;color:#fff;padding:18px 20px;border-radius:8px}
 header img{width:64px;height:64px;object-fit:cover;border-radius:50%;background:#fff}h1{font-size:22px;margin:0 0 5px}header p{margin:0;opacity:.85;font-size:11px}
 h2{font-size:15px;color:#17354b;border-bottom:1px solid #d9e2e7;padding-bottom:7px;margin:24px 0 10px}
-.meta{display:grid;grid-template-columns:1.35fr 1fr 1.5fr;gap:18px;align-items:start;margin-top:15px;padding:2px 2px 8px}
+.meta{display:block;margin-top:8px;padding:0 2px 0}
 .meta div{background:transparent;border:0;border-radius:0;padding:0}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:15px}
 .stats div{background:#f4f7f8;border:1px solid #d9e2e7;border-radius:6px;padding:10px}
 .k{font-size:9px;color:#657783;text-transform:uppercase;font-weight:bold;letter-spacing:.5px}.v{font-size:15px;color:#17354b;font-weight:bold;margin-top:4px}
 .meta .v{font-size:13px;color:#344b59;font-weight:600;margin:0;line-height:1.5}
 .meta div:first-child .v{font-size:16px;color:#17354b;font-weight:700}
-.chart{width:100%;border:1px solid #e1e7eb;border-radius:6px;margin-top:8px}
+.chart{width:100%;border:1px solid #e1e7eb;border-radius:6px;margin-top:0}
+.export-legend{display:flex;flex-wrap:wrap;gap:10px 18px;margin:7px 2px 12px;color:#52636e;font-size:10px}
+.export-legend-item{display:inline-flex;align-items:center;gap:6px}
+.export-legend-swatch{display:inline-block;width:22px;height:0;border-top:3px solid var(--legend-color)}
+.export-legend-swatch.dashed{border-top-style:dashed}
+.export-legend-swatch.dotted{border-top-style:dotted}
+.export-legend-swatch.fill{height:9px;border:1px solid var(--legend-color);background:color-mix(in srgb,var(--legend-color) 25%,transparent)}
 .note{font-size:10px;color:#657783;line-height:1.5}.actions{display:flex;gap:8px;justify-content:flex-end;margin:0 0 12px}
 button{padding:9px 13px;background:#17354b;color:white;border:0;border-radius:5px;font-weight:bold;cursor:pointer}
 @media print{body{background:#fff}.sheet{margin:0;max-width:none;box-shadow:none;padding:12mm}.actions{display:none}}
-@media(max-width:650px){.sheet{margin:0;padding:15px}.meta{grid-template-columns:1fr;gap:5px}.stats{grid-template-columns:1fr 1fr}header{align-items:flex-start}header img{width:48px;height:48px}}
+@media(max-width:650px){.sheet{margin:0;padding:15px}.stats{grid-template-columns:1fr 1fr}header{align-items:flex-start}header img{width:48px;height:48px}}
 </style></head><body><div class="sheet">
-<div class="actions"><button onclick="window.print()">Print / Save as PDF</button></div>
 <header><img src="${logo}" alt="BCRAGD seal"><div><h1>Stream Gage Monitoring Summary</h1><p>BANDERA COUNTY RIVER AUTHORITY &amp; GROUNDWATER DISTRICT</p><p>Prepared ${fmtDate(Date.now())}</p></div></header>
 <div class="meta">
-<div><div class="v">${selectedGage.gage_name || selectedGage.gage_id}</div></div>
-<div><div class="v">Gage ID: ${selectedGage.gage_id} · ${selectedGage.provider || "Provider not reported"}</div></div>
-<div><div class="v">${dateRangeLabel}</div></div>
+<div><div class="v">${selectedGage.gage_name || selectedGage.gage_id}</div><div class="note">${escapeHtml(selectedGage.provider || "Provider not reported")} ${escapeHtml(selectedGage.gage_id || "")}</div></div>
 </div>
-<h2>Hydrograph</h2><img class="chart" src="${chartData}" alt="Selected hydrograph">
+<h2 style="margin-top:10px">Hydrograph</h2><img class="chart" src="${chartData}" alt="Selected hydrograph">
 ${reportLegend}
 <div class="stats">
 <div><div class="k">Observations</div><div class="v">${observations.length.toLocaleString()}</div></div>
@@ -1461,7 +1525,7 @@ ${reportLegend}
 <div><div class="k">Stage Range</div><div class="v">${fmtNumber(max-min)} ${unit}</div></div>
 <div><div class="k">Data Status</div><div class="v">${selectedGage.data_status || "Not reported"}</div></div>
 </div>
-<h2>QA/QC and Data Notes</h2><p>Current QA/QC status shown in the monitoring interface: ${$("qcChip").textContent || "Not reported"}.</p>
+<h2>Data Notes</h2><p>${$("qcChip").textContent || "Not reported"}</p>
 <p>${$("qcMessage").textContent || "No additional QA/QC message is displayed."}</p>
 <p class="note">Data are provisional and are provided for informational purposes. Flood-stage categories and thresholds are site-specific. This summary is not an official flood warning, forecast, or road-closure determination.</p>
 <p class="note">Source: BCRAGD public stream monitoring services. Summary statistics are calculated from ${observations.length.toLocaleString()} selected-gage observations; individual observation records are not included in this report.</p>
