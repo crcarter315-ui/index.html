@@ -69,6 +69,11 @@
   .legend-swatch.threshold { height:0; background:transparent; border-top:2px dashed #c43d36; }
   .legend-swatch.bankfull { height:0; background:transparent; border-top:2px dotted #c17a16; }
   .flood-band { stroke:none; }
+  .unavailable-band { fill:#87949c; fill-opacity:.20; stroke:none; }
+  .legend-swatch.unavailable {
+    width:20px; height:10px; background:rgba(135,148,156,.22);
+    border:1px solid #87949c; border-radius:2px;
+  }
   @media(max-width:650px) {
     .custom-range-toolbar > div { flex:1 1 42%; }
     .custom-range-toolbar input { width:100%; min-width:0; }
@@ -304,6 +309,7 @@
         <div class="chart-legend" id="chartLegend">
           <span class="legend-item"><span class="legend-swatch"></span><span id="primaryLegendName">Selected gage</span></span>
           <span class="legend-item" id="comparisonLegend" hidden><span class="legend-swatch compare"></span><span id="comparisonLegendName">Comparison gage</span></span>
+          <span class="legend-item" id="unavailableLegend" hidden><span class="legend-swatch unavailable"></span><span>Unavailable Data</span></span>
           <span class="legend-item" id="thresholdLegend" hidden><span class="legend-swatch threshold"></span><span id="thresholdLegendName">Road Threshold</span></span>
           <span class="legend-item" id="bankfullLegend" hidden><span class="legend-swatch bankfull"></span><span>Bank Full Estimate</span></span>
           <span class="legend-item" id="actionLegend" hidden><span class="legend-swatch flood-action"></span><span>Action</span></span>
@@ -380,7 +386,6 @@
   const RAIN_SERVICE = "https://services3.arcgis.com/wqgvFuY8FlZhOIIy/arcgis/rest/services/Rain_Gauges_(Public)/FeatureServer";
   const RAIN_GAGE_LAYER = RAIN_SERVICE + "/0";
   const RAIN_OBS_TABLE = RAIN_SERVICE + "/1";
-  const RAIN_HISTORY_DAYS = 8;
   const PAGE_SIZE = 2000;
   const LONG_RANGE_DAYS = 30;
   const MAX_CHART_POINTS = 5000;
@@ -610,6 +615,52 @@
     return Array.from(selected.entries()).sort((a,b) => a[0]-b[0]).map(entry => entry[1]);
   }
 
+  // Detect missing reporting intervals from the observed cadence.
+  // The median interval is resistant to occasional delayed observations.
+  function getObservationGaps(rows) {
+    if (!Array.isArray(rows) || rows.length < 3) return [];
+
+    const intervals = [];
+    for (let i = 1; i < rows.length; i++) {
+      const interval = Number(rows[i].obs_time) - Number(rows[i - 1].obs_time);
+      if (Number.isFinite(interval) && interval > 0) intervals.push(interval);
+    }
+    if (intervals.length < 2) return [];
+
+    intervals.sort((a, b) => a - b);
+    const typicalInterval = intervals[Math.floor((intervals.length - 1) / 2)];
+    const gapThreshold = typicalInterval * 1.8;
+    const gaps = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const previousTime = Number(rows[i - 1].obs_time);
+      const currentTime = Number(rows[i].obs_time);
+      if (currentTime - previousTime > gapThreshold) {
+        gaps.push({ start: previousTime, end: currentTime });
+      }
+    }
+    return gaps;
+  }
+
+  // Keep a plotted segment from bridging any interval identified as missing.
+  function buildGapAwarePath(rows, gaps, x, y) {
+    let path = "";
+    let previousTime = null;
+
+    rows.forEach((row, index) => {
+      const currentTime = Number(row.obs_time);
+      const crossesGap = previousTime !== null && gaps.some(gap =>
+        previousTime < gap.end && currentTime > gap.start
+      );
+      path += (index === 0 || crossesGap ? "M" : "L") +
+        x(currentTime).toFixed(2) + "," +
+        y(Number(row.stage)).toFixed(2) + " ";
+      previousTime = currentTime;
+    });
+
+    return path;
+  }
+
   async function queryHistoricalQcRecord(tableUrl, idField, idValue, status, hours) {
     const start = new Date(Date.now() - hours * 60 * 60 * 1000);
     const sqlDate = start.toISOString().slice(0,19).replace("T"," ");
@@ -703,13 +754,8 @@
     $("rainTotal").textContent = rows.length ? total.toFixed(2) + " in" : "—";
     $("rainPointCount").textContent = rows.length.toLocaleString() + " observations";
     const note = $("rainNote");
-    if (hours > RAIN_HISTORY_DAYS * 24) {
-      note.textContent = "Rainfall history is currently retained for approximately " + RAIN_HISTORY_DAYS + " days. The 30-day chart and total therefore reflect only the observations still available in the table, not a complete 30-day record.";
-      note.style.display = "block";
-    } else {
-      note.textContent = "";
-      note.style.display = "none";
-    }
+    note.textContent = "";
+    note.style.display = "none";
     if (!rows.length) {
       svg.innerHTML = '<text x="450" y="115" text-anchor="middle" class="axis-label">No rainfall observations are available for this period.</text>';
       return;
@@ -887,7 +933,8 @@
         const swatch = item.querySelector(".legend-swatch");
         const label = item.querySelectorAll("span")[1]?.textContent?.trim() || "";
         let color = "#247fae", line = "solid";
-        if (swatch?.classList.contains("compare")) { color = "#8055a5"; line = "dashed"; }
+        if (swatch?.classList.contains("unavailable")) { color = "#87949c"; line = "fill"; }
+        else if (swatch?.classList.contains("compare")) { color = "#8055a5"; line = "dashed"; }
         else if (swatch?.classList.contains("threshold")) { color = "#c43d36"; line = "dashed"; }
         else if (swatch?.classList.contains("bankfull")) { color = "#c17a16"; line = "dotted"; }
         else if (swatch?.classList.contains("flood-action")) { color = "#c5b900"; line = "fill"; }
@@ -907,6 +954,8 @@
   function renderChart(rows) {
     observations = rows;
     const allRows = rows;
+    const unavailableGaps = getObservationGaps(allRows);
+    const comparisonGaps = getObservationGaps(comparisonObservations);
     rows = downsampleObservations(rows);
     const compareRows = downsampleObservations(comparisonObservations);
     const svg = $("chart");
@@ -918,6 +967,7 @@
     $("comparisonLegend").hidden = !(comparisonGage && compareRows.length);
     $("comparisonLegendName").textContent = comparisonGage ? (comparisonGage.gage_name || "Comparison gage") : "Comparison gage";
     $("chartLegend").style.display = rows.length ? "flex" : "none";
+    $("unavailableLegend").hidden = !(rows.length && unavailableGaps.length);
     const gageNameLower = String(selectedGage && selectedGage.gage_name || "").toLowerCase();
     const isBanderaGage = gageNameLower.includes("bandera");
     const floodFields = [
@@ -1025,6 +1075,13 @@
       out += `<line class="gridline" x1="${xx}" y1="${T}" x2="${xx}" y2="${H-B}"/>`;
       out += `<text class="axis-label" x="${xx}" y="${H-19}" text-anchor="middle">${label}</text>`;
     }
+    // Shade intervals where the gage did not report observations.
+    unavailableGaps.forEach(gap => {
+      const left = Math.max(xmin, gap.start);
+      const right = Math.min(xmax, gap.end);
+      if (right <= left) return;
+      out += `<rect class="unavailable-band" x="${x(left).toFixed(2)}" y="${T}" width="${(x(right)-x(left)).toFixed(2)}" height="${ph}"/>`;
+    });
     if (isBanderaGage && floodStagesShown) {
       const action = Number(selectedGage.action_level);
       const minor = Number(selectedGage.minor_flooding);
@@ -1059,12 +1116,10 @@
       out += `<line class="bankfull-line" x1="${L}" y1="${bankfullY}" x2="${W-R}" y2="${bankfullY}"/>`;
       out += `<text class="bankfull-label" x="${W-R-4}" y="${Math.max(T+12, bankfullY-7)}" text-anchor="end">Bank Full Estimate: ${fmtNumber(bankfullValue)} ${stageUnit || "ft"}</text>`;
     }
-    let path="";
-    rows.forEach((r,i)=>{ path+=(i?"L":"M")+x(Number(r.obs_time)).toFixed(2)+","+y(Number(r.stage)).toFixed(2)+" "; });
+    const path = buildGapAwarePath(rows, unavailableGaps, x, y);
     out += `<path class="stage-line" d="${path}"/>`;
     if (comparisonGage && compareRows.length) {
-      let comparePath = "";
-      compareRows.forEach((r,i)=>{ comparePath+=(i?"L":"M")+x(Number(r.obs_time)).toFixed(2)+","+y(Number(r.stage)).toFixed(2)+" "; });
+      const comparePath = buildGapAwarePath(compareRows, comparisonGaps, x, y);
       out += `<path class="comparison-line" d="${comparePath}"/>`;
     }
     out += `<line id="hoverLine" class="hover-line" x1="0" y1="${T}" x2="0" y2="${H-B}" visibility="hidden"/>`;
@@ -1383,7 +1438,7 @@
         .threshold-label{fill:#a8322c;font-size:11px;font-weight:700}
         .bankfull-line{stroke:#c17a16;stroke-width:2.2;stroke-dasharray:3 5}
         .bankfull-label{fill:#9a5b08;font-size:11px;font-weight:700}
-        .flood-band{stroke:none}`;
+        .flood-band{stroke:none}.unavailable-band{fill:#87949c;fill-opacity:.20;stroke:none}`;
       clone.insertBefore(style,clone.firstChild);
       const serialized = new XMLSerializer().serializeToString(clone);
       const svgBlob = new Blob([serialized],{type:"image/svg+xml;charset=utf-8"});
@@ -1480,7 +1535,7 @@
     const reportChart = $("chart").cloneNode(true);
     reportChart.setAttribute("xmlns","http://www.w3.org/2000/svg");
     const reportSvgStyle = document.createElementNS("http://www.w3.org/2000/svg","style");
-    reportSvgStyle.textContent = ".gridline{stroke:#e6ecef;stroke-width:1}.axis-label{fill:#687985;font-size:11px}.stage-line{fill:none;stroke:#247fae;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}.comparison-line{fill:none;stroke:#8055a5;stroke-width:2.6;stroke-dasharray:7 4}.threshold-line{stroke:#c43d36;stroke-width:2.2;stroke-dasharray:9 6}.threshold-label{fill:#a8322c;font-size:11px;font-weight:700}.bankfull-line{stroke:#c17a16;stroke-width:2.2;stroke-dasharray:3 5}.bankfull-label{fill:#9a5b08;font-size:11px;font-weight:700}";
+    reportSvgStyle.textContent = ".gridline{stroke:#e6ecef;stroke-width:1}.axis-label{fill:#687985;font-size:11px}.stage-line{fill:none;stroke:#247fae;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}.comparison-line{fill:none;stroke:#8055a5;stroke-width:2.6;stroke-dasharray:7 4}.threshold-line{stroke:#c43d36;stroke-width:2.2;stroke-dasharray:9 6}.threshold-label{fill:#a8322c;font-size:11px;font-weight:700}.bankfull-line{stroke:#c17a16;stroke-width:2.2;stroke-dasharray:3 5}.bankfull-label{fill:#9a5b08;font-size:11px;font-weight:700}.unavailable-band{fill:#87949c;fill-opacity:.20;stroke:none}";
     reportChart.insertBefore(reportSvgStyle,reportChart.firstChild);
     const chartSvg = new XMLSerializer().serializeToString(reportChart);
     const chartData = "data:image/svg+xml;base64,"+btoa(unescape(encodeURIComponent(chartSvg)));
